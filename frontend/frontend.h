@@ -22,3 +22,10 @@ typedef struct {
 } Token;
 
 SourceContents load_source(Arena* arena, char* path);
+
+typedef struct {
+  int length;
+  Token* tokens;
+} TokenizedBuffer;
+
+TokenizedBuffer tokenize(SourceContents source);
