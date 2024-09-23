@@ -1,18 +1,16 @@
-#include <stdio.h>
-
 #include "allocator.h"
 
 #define SLI 4
 
 typedef struct Block Block;
 struct Block {
-  bool allocated;
-  uint64_t size;
+  bool allocated; // used for coalescing
+  uint64_t size; // size not including this header
 
-  Block** this;
-  Block* list_next;
+  Block** this; // pointer to this block in the free list
+  Block* list_next; // next block in free list
 
-  Block* adj_next;
+  Block* adj_next; // used for coalescing
   Block* adj_prev;
 };
 
@@ -53,6 +51,7 @@ static uint64_t round_up(uint64_t amount, int num_bits) {
   return (amount + mask) & ~mask;
 }
 
+// Round up amount so that it has all bits below SLI cleared
 static size_t align_amount(size_t amount) {
   amount = round_up(amount, SLI);
   int f = tzcnt64(amount);
@@ -60,6 +59,7 @@ static size_t align_amount(size_t amount) {
   return round_up(amount, bottom_clear);
 }
 
+// Scan through bitset for available
 static int find_index(uint64_t state, int minimum) {
   uint64_t masked = state & ~ones(minimum);
   return masked == 0 ? -1 : tzcnt64(masked);
@@ -69,6 +69,7 @@ static Table2* get_table2(Table1* t1, int f) {
   return t1->data + f;
 }
 
+// After removing block, update bitsets
 static void update_state(Table1* t1, int f, int s) {
   Table2* t2 = get_table2(t1, f);
   
@@ -81,6 +82,7 @@ static void update_state(Table1* t1, int f, int s) {
   }
 }
 
+// Pop the first available block
 static Block* pop_block(Table1* t1, int f, int s) {
   Table2* t2 = get_table2(t1, f);
 
@@ -99,8 +101,11 @@ static Block* pop_block(Table1* t1, int f, int s) {
   return block;
 }
 
+// Remove a specific block from its free list
 static void remove_block(Table1* t1, Block* block) {
   assert(block->this);
+  assert(!block->allocated);
+
   *block->this = block->list_next;
 
   if (block->list_next) {
@@ -114,6 +119,23 @@ static void remove_block(Table1* t1, Block* block) {
   block->this = NULL;
 }
 
+// Put a block into the free list
+static void insert_block(Table1* t1, int f, int s, Block* block) {
+  t1->state |= (uint64_t)1 << f;
+
+  Table2* t2 = get_table2(t1, f);
+  t2->state |= (uint64_t)1 << s;
+
+  block->list_next = t2->data[s];
+  if (block->list_next) {
+    block->list_next->this = &block->list_next;
+  }
+
+  t2->data[s] = block;
+  block->this = &t2->data[s];
+}
+
+// Given indices, find a block that is sufficient size
 static Block* find_block(Table1* t1, int f, int s) {
   // Try find block with fli = f
   if (t1->state & ((uint64_t)1 << f)) {
@@ -142,6 +164,7 @@ static Block* find_block(Table1* t1, int f, int s) {
   return pop_block(t1, f, s);
 }
 
+// Push a new block into the arena
 static Block* new_block(Arena* arena, size_t size) {
   Block* block = arena_push(arena, sizeof(Block) + size);
   block->size = size;
@@ -156,22 +179,9 @@ static uint64_t minimum_size() {
   return align_amount(1);
 }
 
-static void insert_block(Table1* t1, int f, int s, Block* block) {
-  t1->state |= (uint64_t)1 << f;
-
-  Table2* t2 = get_table2(t1, f);
-  t2->state |= (uint64_t)1 << s;
-
-  block->list_next = t2->data[s];
-  if (block->list_next) {
-    block->list_next->this = &block->list_next;
-  }
-
-  t2->data[s] = block;
-  block->this = &t2->data[s];
-}
-
-static Block* split_block(Table1* t1, Block* block, uint64_t amount) {
+// If block is big enough to split, split.
+static Block* attempt_split_block(Table1* t1, Block* block, uint64_t amount) {
+  // Need enough space for amount + block header + block size
   if (block->size >= (amount + minimum_size() + sizeof(Block))) {
     Block* b2 = offset_pointer(block + 1, amount);
 
@@ -192,15 +202,25 @@ static Block* split_block(Table1* t1, Block* block, uint64_t amount) {
     mapping(b2->size, &f, &s);
     insert_block(t1, f, s, b2);
 
-    printf("Split block [%zu] -> [%zu] [%zu]\n", block->size, amount, b2->size);
-
     block->size = amount;
-  }
-  else {
-    printf("Existing block [%zu]\n", block->size);
   }
 
   return block;
+}
+
+// Given two adjacent blocks, coalesce them into one
+static Block* coalesce_blocks(Block* first, Block* second) {
+  assert(offset_pointer(first + 1, first->size) == second);
+
+  first->size += second->size + sizeof(Block);
+  first->adj_next = second->adj_next;
+
+  if (first->adj_next) {
+    assert(first->adj_next->adj_prev == second);
+    first->adj_next->adj_prev = first;
+  }
+
+  return first;
 }
 
 void* allocator_alloc(Allocator* a, uint64_t amount) {
@@ -217,30 +237,12 @@ void* allocator_alloc(Allocator* a, uint64_t amount) {
 
   if (!block) {
     block = new_block(a->arena, amount);
-    printf("New block [%zu]\n", block->size);
   }
-  else {
-    block = split_block(&a->table, block, amount);
-  }
+
+  block = attempt_split_block(&a->table, block, amount);
 
   block->allocated = true;
   return block + 1;
-}
-
-static Block* coalesce_blocks(Block* first, Block* second) {
-  assert(offset_pointer(first + 1, first->size) == second);
-
-  printf("Coalescing [%zu] [%zu] -> [%zu]\n", first->size, second->size, first->size + second->size + sizeof(Block));
-
-  first->size += second->size + sizeof(Block);
-  first->adj_next = second->adj_next;
-
-  if (first->adj_next) {
-    assert(first->adj_next->adj_prev == second);
-    first->adj_next->adj_prev = first;
-  }
-
-  return first;
 }
 
 void allocator_free(Allocator* a, void* pointer) {
@@ -251,8 +253,6 @@ void allocator_free(Allocator* a, void* pointer) {
   Block* block = (Block*)pointer - 1;
   assert(block->allocated);
   block->allocated = false;
-
-  printf("Freeing block [%zu]\n", block->size);
 
   if (block->adj_next && !block->adj_next->allocated) {
     Block* b2 = block->adj_next;

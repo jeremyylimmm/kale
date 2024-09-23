@@ -22,22 +22,19 @@ int main() {
     *v[i] = i;
   }
 
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < n; ++i)
     printf("%d\n", *v[i]);
-  }
 
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < n; ++i)
     allocator_free(a, v[i]);
-  }
 
   for (int i = 0; i < n * 2; ++i) {
     v[i] = allocator_alloc(a, sizeof(int));
     *v[i] = i;
   }
 
-  for (int i = 0; i < n * 2; ++i) {
+  for (int i = 0; i < n * 2; ++i)
     printf("%d\n", *v[i]);
-  }
 
   free_arena(arena);
 
