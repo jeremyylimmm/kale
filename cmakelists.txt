@@ -11,6 +11,10 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-file(GLOB_RECURSE SOURCES "compiler/*.c" "compiler/*.h")
+file(GLOB_RECURSE KALE_SOURCES "kale/*.c" "kale/*.h")
+add_library(kale STATIC ${KALE_SOURCES})
 
-add_executable(kale ${SOURCES})
+file(GLOB_RECURSE FRONTEND_SOURCES "frontend/*.c" "frontend/*.h")
+add_executable(frontend ${FRONTEND_SOURCES})
+target_link_libraries(frontend PRIVATE kale)
+target_include_directories(frontend PRIVATE "kale")
