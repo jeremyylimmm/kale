@@ -56,3 +56,13 @@ int _dynamic_array_pop(void* da) {
   assert(dynamic_array_length(da));
   return --(header(da)->length);
 }
+
+void* _dynamic_array_bake(Arena* arena, void* da, size_t stride) {
+  size_t length = header(da)->length;
+  size_t size = length * stride;
+
+  void* buffer = arena_push(arena, size);
+  memcpy(buffer, da, size);
+
+  return buffer;
+};

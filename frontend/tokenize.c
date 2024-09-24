@@ -70,8 +70,7 @@ TokenizedBuffer tokenize(Arena* arena, SourceContents source) {
 
   TokenizedBuffer result;
   result.length = dynamic_array_length(tokens);
-  result.tokens = arena_array(arena, Token, result.length);
-  memcpy(result.tokens, tokens, result.length * sizeof(Token));
+  result.tokens = dynamic_array_bake(arena, tokens);
 
   scratch_release(&scratch);
 
