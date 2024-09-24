@@ -11,7 +11,9 @@ enum {
   TOKEN_EOF,
 
   TOKEN_IDENTIFIER = 256,
-  TOKEN_INTEGER_LITERAL
+  TOKEN_INTEGER_LITERAL,
+
+  NUM_TOKEN_KINDS
 };
 
 typedef struct {
@@ -21,6 +23,8 @@ typedef struct {
   char* start;
 } Token;
 
+Scratch global_scratch(int num_conflicts, Arena** conflicts);
+
 SourceContents load_source(Arena* arena, char* path);
 
 typedef struct {
@@ -28,4 +32,4 @@ typedef struct {
   Token* tokens;
 } TokenizedBuffer;
 
-TokenizedBuffer tokenize(SourceContents source);
+TokenizedBuffer tokenize(Arena* arena, SourceContents source);

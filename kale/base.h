@@ -8,6 +8,10 @@
 
 #include "platform.h"
 
+#define LENGTH(array) (sizeof(array)/sizeof((array)[0]))
+
+#define for_range(type, it, end) for (type it = 0; it < (end); ++it)
+
 inline void* offset_pointer(void* pointer, int64_t offset) {
   return (uint8_t*)pointer + offset;
 } 

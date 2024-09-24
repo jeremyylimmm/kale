@@ -18,6 +18,10 @@ struct Arena {
   size_t capacity;
 };
 
+struct ScratchLibrary {
+  Arena* arenas[2];
+};
+
 Arena* new_arena() {
   Arena* arena = LocalAlloc(LMEM_ZEROINIT, sizeof(Arena));
   
@@ -75,6 +79,77 @@ void* arena_push_zeroed(Arena* arena, size_t amount) {
   void* pointer = arena_push(arena, amount);
   memset(pointer, 0, amount);
   return pointer;
+}
+
+ScratchLibrary* new_scratch_library() {
+  ScratchLibrary* lib = LocalAlloc(LMEM_ZEROINIT, sizeof(ScratchLibrary));
+
+  for_range(int, i, LENGTH(lib->arenas)) {
+    lib->arenas[i] = new_arena();
+  }
+
+  return lib;
+}
+
+void free_scratch_library(ScratchLibrary* lib) {
+  for_range(int, i, LENGTH(lib->arenas)) {
+    free_arena(lib->arenas[i]);
+  }
+
+  LocalFree(lib);
+}
+
+typedef struct {
+  size_t used;
+} ScratchImpl;
+
+Scratch scratch_get(ScratchLibrary* lib, int num_conflicts, Arena** conflicts) {
+  for_range(int, i, LENGTH(lib->arenas)) {
+    Arena* arena = lib->arenas[i];
+
+    bool can_use = true;
+
+    for_range(int, j, num_conflicts) {
+      Arena* conflict = conflicts[j];
+
+      if (arena == conflict) {
+        can_use = false;
+        break;
+      }
+    }
+
+    if (can_use) {
+      size_t used = arena->used;
+
+      ScratchImpl* impl = arena_type(arena, ScratchImpl);
+      impl->used = used;
+
+      return (Scratch) {
+        .arena = arena,
+        .impl = impl
+      };
+    }
+  }
+
+  assert(false);
+  return (Scratch) {0};
+}
+
+void scratch_release(Scratch* scratch) {
+  Arena* arena = scratch->arena;
+
+  size_t start = ((ScratchImpl*)scratch->impl)->used;
+  size_t end = scratch->arena->used;
+
+  assert(end >= start);
+
+  arena->used = start;
+  (void)end;
+
+  #if _DEBUG
+  memset(offset_pointer(arena->base, start), 0, end-start);
+  memset(scratch, 0, sizeof(*scratch));
+  #endif
 }
 
 int bitscan_forward(uint64_t number) {

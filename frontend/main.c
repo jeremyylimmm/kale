@@ -1,24 +1,24 @@
 #include <stdio.h>
 
 #include "frontend.h"
-#include "allocator.h"
-#include "dynamic_array.h"
+
+static ScratchLibrary* global_scratch_lib;
+
+Scratch global_scratch(int num_conflicts, Arena** conflicts) {
+  return scratch_get(global_scratch_lib, num_conflicts, conflicts);
+}
 
 int main() {
+  global_scratch_lib = new_scratch_library();
+
   Arena* arena = new_arena();
-  Allocator* a = new_allocator(arena);
 
-  allocator_free(a, allocator_alloc(a, 1000));
+  SourceContents source = load_source(arena, "examples/test.kale");
+  TokenizedBuffer tokens = tokenize(arena, source);
 
-  DynamicArray(int) x = new_dynamic_array(a);
-
-  for (int i = 0; i < 100; ++i) {
-    dynamic_array_put(x, i);
-  }
-
-  while (dynamic_array_length(x)) {
-    int i = dynamic_array_pop(x);
-    printf("%d\n", i);
+  for_range(int, i, tokens.length) {
+    Token token = tokens.tokens[i];
+    printf("<%d (line %d): '%.*s'>\n", token.kind, token.line, token.length, token.start);
   }
 
   return 0;
