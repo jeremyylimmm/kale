@@ -13,5 +13,5 @@ void* arena_push_zeroed(Arena* arena, size_t amount);
 #define arena_array(arena, type, count) ((type*)arena_push_zeroed(arena, sizeof(type) * (count)))
 #define arena_type(arena, type) arena_array(arena, type, 1)
 
-int lzcnt64(uint64_t number);
-int tzcnt64(uint64_t number);
+int bitscan_forward(uint64_t number); // Bitscan low to high
+int bitscan_backward(uint64_t number); // Bitscan high to low

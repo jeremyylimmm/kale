@@ -1,6 +1,11 @@
+#include <stdio.h>
+
 #include "allocator.h"
 
 #define SLI 4
+static_assert((1<<SLI) < 32, "invalid value for SLI");
+
+//#define DEBUG_PRINT_ALLOCATIONS
 
 typedef struct Block Block;
 struct Block {
@@ -8,14 +13,14 @@ struct Block {
   uint64_t size; // size not including this header
 
   Block** this; // pointer to this block in the free list
-  Block* list_next; // next block in free list
+  Block* next; // next block in free list
 
-  Block* adj_next; // used for coalescing
-  Block* adj_prev;
+  Block* left; // used for coalescing
+  Block* right;
 };
 
 typedef struct {
-  Block* data[1 << SLI];
+  Block* head[1 << SLI];
   uint64_t state;
 } Table2;
 
@@ -36,9 +41,14 @@ Allocator* new_allocator(Arena* arena) {
   return allocator;
 }
 
+static int most_significant_bit(uint64_t value) {
+  assert(value);
+  return bitscan_backward(value);
+}
+
 static void mapping(uint64_t amount, int* f, int* s) {
   assert(amount);
-  *f = lzcnt64(amount);
+  *f = most_significant_bit(amount);
   *s = (int)((amount ^ ((uint64_t)1 << *f)) >> (*f - SLI));
 }
 
@@ -54,7 +64,7 @@ static uint64_t round_up(uint64_t amount, int num_bits) {
 // Round up amount so that it has all bits below SLI cleared
 static size_t align_amount(size_t amount) {
   amount = round_up(amount, SLI);
-  int f = tzcnt64(amount);
+  int f = most_significant_bit(amount);
   int bottom_clear = f - SLI;
   return round_up(amount, bottom_clear);
 }
@@ -62,7 +72,7 @@ static size_t align_amount(size_t amount) {
 // Scan through bitset for available
 static int find_index(uint64_t state, int minimum) {
   uint64_t masked = state & ~ones(minimum);
-  return masked == 0 ? -1 : tzcnt64(masked);
+  return masked == 0 ? -1 : bitscan_forward(masked);
 }
 
 static Table2* get_table2(Table1* t1, int f) {
@@ -70,10 +80,10 @@ static Table2* get_table2(Table1* t1, int f) {
 }
 
 // After removing block, update bitsets
-static void update_state(Table1* t1, int f, int s) {
+static void handle_remove(Table1* t1, int f, int s) {
   Table2* t2 = get_table2(t1, f);
   
-  if (!t2->data[s]) {
+  if (!t2->head[s]) {
     t2->state &= ~(1 << s);
   }
 
@@ -82,41 +92,33 @@ static void update_state(Table1* t1, int f, int s) {
   }
 }
 
-// Pop the first available block
-static Block* pop_block(Table1* t1, int f, int s) {
-  Table2* t2 = get_table2(t1, f);
-
-  Block* block = t2->data[s];
-
-  t2->data[s] = block->list_next;
-  if (t2->data[s]) {
-    t2->data[s]->this = &t2->data[s];
-  }
-
-  block->this = NULL;
-  block->list_next = NULL;
-
-  update_state(t1, f, s);
-
-  return block;
-}
-
 // Remove a specific block from its free list
 static void remove_block(Table1* t1, Block* block) {
   assert(block->this);
   assert(!block->allocated);
 
-  *block->this = block->list_next;
+  Block* next = *block->this = block->next;
 
-  if (block->list_next) {
-    block->list_next->this = block->this;
+  if (next) {
+    next->this = block->this;
   }
 
   int f, s;
   mapping(block->size, &f, &s);
-  update_state(t1, f, s);
+  handle_remove(t1, f, s);
 
   block->this = NULL;
+  block->next = NULL;
+}
+
+// Pop the first available block
+static Block* pop_block(Table1* t1, int f, int s) {
+  Block* block = get_table2(t1, f)->head[s];
+  
+  assert(block);
+  remove_block(t1, block);
+
+  return block;
 }
 
 // Put a block into the free list
@@ -126,13 +128,14 @@ static void insert_block(Table1* t1, int f, int s, Block* block) {
   Table2* t2 = get_table2(t1, f);
   t2->state |= (uint64_t)1 << s;
 
-  block->list_next = t2->data[s];
-  if (block->list_next) {
-    block->list_next->this = &block->list_next;
+  Block* next = block->next = t2->head[s];
+
+  if (next) {
+    next->this = &block->next;
   }
 
-  t2->data[s] = block;
-  block->this = &t2->data[s];
+  t2->head[s] = block;
+  block->this = &t2->head[s];
 }
 
 // Given indices, find a block that is sufficient size
@@ -164,14 +167,18 @@ static Block* find_block(Table1* t1, int f, int s) {
   return pop_block(t1, f, s);
 }
 
+static void initialize_block(Block* block, size_t size) {
+  block->size = size;
+  block->allocated = false;
+  block->next = NULL;
+  block->left = NULL;
+  block->right = NULL;
+}
+
 // Push a new block into the arena
 static Block* new_block(Arena* arena, size_t size) {
   Block* block = arena_push(arena, sizeof(Block) + size);
-  block->size = size;
-  block->allocated = false;
-  block->list_next = NULL;
-  block->adj_prev = NULL;
-  block->adj_next = NULL;
+  initialize_block(block, size);
   return block;
 }
 
@@ -185,24 +192,28 @@ static Block* attempt_split_block(Table1* t1, Block* block, uint64_t amount) {
   if (block->size >= (amount + minimum_size() + sizeof(Block))) {
     Block* b2 = offset_pointer(block + 1, amount);
 
-    b2->size = (block->size - amount) - sizeof(Block);
-    b2->allocated = false;
-    b2->list_next = NULL;
+    size_t b2_size = (block->size - amount) - sizeof(Block); 
+    initialize_block(b2, b2_size);
 
-    b2->adj_next = block->adj_next;
-    if (b2->adj_next) {
-      assert(b2->adj_next == block);
-      b2->adj_next->adj_prev = b2;
+    Block* right = b2->right = block->right;
+
+    if (right) {
+      assert(right->left == block);
+      right->left = b2;
     }
 
-    block->adj_next = b2;
-    b2->adj_prev = block;
+    block->right = b2;
+    b2->left = block;
 
     int f, s;
     mapping(b2->size, &f, &s);
     insert_block(t1, f, s, b2);
 
     block->size = amount;
+
+    #ifdef DEBUG_PRINT_ALLOCATIONS
+    printf("  Split [%llu] -> [%llu], [%llu][%llu]\n", block->size + b2->size + sizeof(Block), block->size, sizeof(block), b2->size);
+    #endif
   }
 
   return block;
@@ -213,17 +224,26 @@ static Block* coalesce_blocks(Block* first, Block* second) {
   assert(offset_pointer(first + 1, first->size) == second);
 
   first->size += second->size + sizeof(Block);
-  first->adj_next = second->adj_next;
 
-  if (first->adj_next) {
-    assert(first->adj_next->adj_prev == second);
-    first->adj_next->adj_prev = first;
+  Block* right = first->right = second->right;
+
+  if (right) {
+    assert(right->left == second);
+    right->left = first;
   }
+
+  #ifdef DEBUG_PRINT_ALLOCATIONS
+  printf("  Coalesce [%llu], [%llu][%llu] -> [%llu]\n", first->size - second->size - sizeof(Block), sizeof(Block), second->size, first->size);
+  #endif
 
   return first;
 }
 
 void* allocator_alloc(Allocator* a, uint64_t amount) {
+  #ifdef DEBUG_PRINT_ALLOCATIONS
+  printf("Allocate (%llu):\n", amount);
+  #endif
+
   if (amount == 0) {
     return NULL;
   }
@@ -236,7 +256,15 @@ void* allocator_alloc(Allocator* a, uint64_t amount) {
   Block* block = find_block(&a->table, f, s);
 
   if (!block) {
+    #ifdef DEBUG_PRINT_ALLOCATIONS
+    printf("  New block\n");
+    #endif
     block = new_block(a->arena, amount);
+  }
+  else {
+    #ifdef DEBUG_PRINT_ALLOCATIONS
+    printf("  Existing block [%llu]\n", block->size);
+    #endif
   }
 
   block = attempt_split_block(&a->table, block, amount);
@@ -254,16 +282,20 @@ void allocator_free(Allocator* a, void* pointer) {
   assert(block->allocated);
   block->allocated = false;
 
-  if (block->adj_next && !block->adj_next->allocated) {
-    Block* b2 = block->adj_next;
-    remove_block(&a->table, b2);
-    block = coalesce_blocks(block, b2);
+  #ifdef DEBUG_PRINT_ALLOCATIONS
+  printf("Free (%llu):\n", block->size);
+  #endif
+
+  if (block->right && !block->right->allocated) {
+    Block* right = block->right;
+    remove_block(&a->table, right);
+    block = coalesce_blocks(block, right);
   }
 
-  if (block->adj_prev && !block->adj_prev->allocated) {
-    Block* b2 = block->adj_prev;
-    remove_block(&a->table, b2);
-    block = coalesce_blocks(b2, block);
+  if (block->left && !block->left->allocated) {
+    Block* left = block->left;
+    remove_block(&a->table, left);
+    block = coalesce_blocks(left, block);
   }
 
   int f, s;

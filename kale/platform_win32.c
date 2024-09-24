@@ -77,9 +77,9 @@ void* arena_push_zeroed(Arena* arena, size_t amount) {
   return pointer;
 }
 
-int lzcnt64(uint64_t number) {
+int bitscan_forward(uint64_t number) {
   DWORD index;
-  if(BitScanReverse64(&index, number)) {
+  if(BitScanForward64(&index, number)) {
     return index;
   }
   else {
@@ -87,9 +87,9 @@ int lzcnt64(uint64_t number) {
   }
 }
 
-int tzcnt64(uint64_t number) {
+int bitscan_backward(uint64_t number) {
   DWORD index;
-  if(BitScanForward64(&index, number)) {
+  if(BitScanReverse64(&index, number)) {
     return index;
   }
   else {

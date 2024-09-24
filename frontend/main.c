@@ -8,6 +8,8 @@ int main() {
   Arena* arena = new_arena();
   Allocator* a = new_allocator(arena);
 
+  allocator_free(a, allocator_alloc(a, 1000));
+
   DynamicArray(int) x = new_dynamic_array(a);
 
   for (int i = 0; i < 100; ++i) {
