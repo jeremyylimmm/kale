@@ -373,9 +373,26 @@ bool allocator_tests(ScratchLibrary* scratch_lib) {
 
   ASSERT(a->table.data[x].head[y]->size == block_size, "block doesn't coalesce properly");
 
-  scratch_release(&scratch);
+  a = new_allocator(scratch.arena);
+
+  n = 4;
+  uint64_t size = (n-1) * sizeof(Block) + n * 32 + 1;
+
+  allocator_free(a, allocator_alloc(a, size));
+
+  void* prev = allocator_alloc(a, 32);
+
+  for (int i = 1; i < n; ++i) {
+    void* cur = allocator_alloc(a, 32);
+    ASSERT(cur == offset_pointer(prev, sizeof(Block) + 32), "block split bug");
+    prev = cur;
+  }
+
+  ASSERT(allocator_alloc(a, 32) != offset_pointer(prev, sizeof(Block) + 32), "block split even though too small");
 
   printf("All tests passed.\n");
+
+  scratch_release(&scratch);
 
   return true;
 }
