@@ -303,3 +303,79 @@ void allocator_free(Allocator* a, void* pointer) {
 
   insert_block(&a->table, f, s, block);
 }
+
+bool allocator_tests(ScratchLibrary* scratch_lib) {
+  Scratch scratch = scratch_get(scratch_lib, 0, NULL);
+
+  #define ASSERT(cond, message) do { if (!(cond)) { printf("Failure %s(%d): %s\n", __FILE__, __LINE__, message); return false; } } while (false)
+
+  ASSERT(round_up(0b1011, 2) == 0b1100, "round up bug");
+  ASSERT(round_up(0b1111, 3) == 0b10000, "round up bug");
+  ASSERT(round_up(0b111, 3) == 0b1000, "round up bug");
+
+  ASSERT(most_significant_bit(0b10001) == 4, "most significant bit bug");
+  ASSERT(most_significant_bit(0b10101) == 4, "most significant bit bug");
+  ASSERT(most_significant_bit(0b10000) == 4, "most significant bit bug");
+
+  ASSERT(most_significant_bit(0b1000) == 3, "most significant bit bug");
+  ASSERT(most_significant_bit(0b10) == 1, "most significant bit bug");
+
+  ASSERT(align_amount(0b1111) == 0b10000, "align amount bug");
+  ASSERT(align_amount(0b001) == 0b10000, "align amount bug");
+  ASSERT(align_amount(0b10000) == 0b10000, "align amount bug");
+  ASSERT(align_amount(0b11000) == 0b100000, "align amount bug");
+  ASSERT(align_amount(0b100010001) == 0b100100000, "align amount bug");
+  ASSERT(align_amount(0b1000000) == 0b1000000, "align amount bug");
+  ASSERT(align_amount(0b1000100) == 0b1010000, "align amount bug");
+
+  int f, s;
+
+  mapping(0b0011010, &f, &s);
+  ASSERT(f == 4 && s == 0b1010, "mapping bug");
+
+  mapping(0b1010010, &f, &s);
+  ASSERT(f == 6 && s == 0b0100, "mapping bug");
+
+  Allocator* a = new_allocator(scratch.arena); 
+
+  uint64_t block_size = align_amount(10 * 1024 * 1024);
+  allocator_free(a, allocator_alloc(a, block_size));
+
+  int n = 1000;
+  int** v = allocator_alloc(a, sizeof(int*) * n);
+
+  for_range(int, i, n) {
+    v[i] = allocator_alloc(a, sizeof(int));
+    *v[i] = i;
+  }
+
+  for_range(int, i, n) {
+    ASSERT(*v[i] == i, "memory corruped");
+
+    if (i % 2 == 0) {
+      allocator_free(a, v[i]);
+    }
+  }
+
+  for_range(int, i, n) {
+    if (i % 2 != 0) {
+      allocator_free(a, v[i]);
+    }
+  }
+
+  allocator_free(a, v);
+
+  int x = most_significant_bit(a->table.state);
+  ASSERT(a->table.state == (uint64_t)1 << x, "not fully coalesced");
+
+  int y = most_significant_bit(a->table.data[x].state);
+  ASSERT(a->table.data[x].state == (uint64_t)1 << y, "not fully coalesced");
+
+  ASSERT(a->table.data[x].head[y]->size == block_size, "block doesn't coalesce properly");
+
+  scratch_release(&scratch);
+
+  printf("All tests passed.\n");
+
+  return true;
+}
