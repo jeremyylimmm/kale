@@ -53,7 +53,7 @@ static void mapping(uint64_t amount, int* f, int* s) {
 }
 
 static uint64_t ones(int count) {
-  return (1 << count) - 1;
+  return ((uint64_t)1 << count) - 1;
 }
 
 static uint64_t round_up(uint64_t amount, int num_bits) {
@@ -327,6 +327,10 @@ bool allocator_tests(ScratchLibrary* scratch_lib) {
   ASSERT(align_amount(0b100010001) == 0b100100000, "align amount bug");
   ASSERT(align_amount(0b1000000) == 0b1000000, "align amount bug");
   ASSERT(align_amount(0b1000100) == 0b1010000, "align amount bug");
+  ASSERT(align_amount(0b100001000000000000000000000000) == 0b100010000000000000000000000000, "align amount bug");
+  ASSERT(align_amount(0b100000000000000000000000000001) == 0b100010000000000000000000000000, "align amount bug");
+  ASSERT(align_amount(0b100010000000000000000000000000) == 0b100010000000000000000000000000, "align amount bug");
+  ASSERT(align_amount(0b101000000000000000000000000000) == 0b101000000000000000000000000000, "align amount bug");
 
   int f, s;
 
