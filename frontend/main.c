@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "frontend.h"
+#include "allocator.h"
 
 static ScratchLibrary* global_scratch_lib;
 
@@ -16,10 +17,12 @@ int main() {
   SourceContents source = load_source(arena, "examples/test.kale");
   TokenizedBuffer tokens = tokenize(arena, source);
 
-  for_range(int, i, tokens.length) {
-    Token token = tokens.tokens[i];
-    printf("<%d (line %d): '%.*s'>\n", token.kind, token.line, token.length, token.start);
+  AST* ast = parse(arena, tokens);
+  if (!ast) {
+    return 1;
   }
+
+  dump_ast(ast);
 
   return 0;
 }
