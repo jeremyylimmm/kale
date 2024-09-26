@@ -327,6 +327,8 @@ bool allocator_tests(ScratchLibrary* scratch_lib) {
   ASSERT(align_amount(0b100010001) == 0b100100000, "align amount bug");
   ASSERT(align_amount(0b1000000) == 0b1000000, "align amount bug");
   ASSERT(align_amount(0b1000100) == 0b1010000, "align amount bug");
+  ASSERT(align_amount(0b11111100000) == 0b100000000000, "align amount bug");
+  ASSERT(align_amount(0b10111100000) == 0b11000000000, "align amount bug");
   ASSERT(align_amount(0b100001000000000000000000000000) == 0b100010000000000000000000000000, "align amount bug");
   ASSERT(align_amount(0b100000000000000000000000000001) == 0b100010000000000000000000000000, "align amount bug");
   ASSERT(align_amount(0b100010000000000000000000000000) == 0b100010000000000000000000000000, "align amount bug");
