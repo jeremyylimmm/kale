@@ -179,16 +179,22 @@ static Item* new_item(int lhs, ProductionRHS* rhs, int dot, Symbol lookahead) {
   return item;
 }
 
+static void populate_item_set_and_stack(ItemSet* set, ItemSet* set_dest, ItemList* stack) {
+  for (int i = 0; i < MAX_ITEMS_PER_SET; ++i) {
+    if (set->items[i]) {
+      item_list_add(stack, set->items[i]);
+      if (set_dest) {
+        item_set_add(set_dest, set->items[i]);
+      }
+    }
+  }
+}
+
 static ItemSet* closure(Grammar* grammar, ItemSet* set) {
   ItemSet* result = calloc(1, sizeof(ItemSet));
   ItemList stack = {0};
 
-  for (int i = 0; i < MAX_ITEMS_PER_SET; ++i) {
-    if (set->items[i]) {
-      item_list_add(&stack, set->items[i]);
-      item_set_add(result, set->items[i]);
-    }
-  }
+  populate_item_set_and_stack(set, result, &stack);
 
   int num_first;
   Symbol first[MAX_SYMBOLS_PER_FIRST];
@@ -228,6 +234,41 @@ static ItemSet* closure(Grammar* grammar, ItemSet* set) {
   return result;
 } 
 
+static ItemSet* _goto(Grammar* grammar, ItemSet* s, Symbol x) {
+  ItemList stack = {0};
+  ItemSet* moved = calloc(1, sizeof(ItemSet));
+
+  populate_item_set_and_stack(s, NULL, &stack);
+
+  while (stack.count) {
+    Item* item = item_list_pop(&stack);
+
+    if (item->dot == item->rhs->num_symbols) {
+      continue;
+    }
+
+    Symbol next = item->rhs->symbols[item->dot];
+
+    if (!symbol_equal(&next, &x)) {
+      continue;
+    }
+    
+    Item* ni = new_item(item->lhs, item->rhs, item->dot + 1, item->lookahead);
+
+    if (!item_set_contains(moved, ni)) {
+      item_set_add(moved, ni);
+      item_list_add(&stack, ni);
+    }
+  }
+
+  free(stack.items);
+
+  ItemSet* result = closure(grammar, moved);
+  free(moved);
+
+  return result;
+}
+
 int main() {
   FILE* file;
   if (fopen_s(&file, "meta/grammar.txt", "r")) {
@@ -260,7 +301,9 @@ int main() {
   item_set_add(set, &root);
 
   ItemSet* cc0 = closure(grammar, set);
-  dump_item_set(grammar, cc0);
+  ItemSet* cc1 = _goto(grammar, cc0, (Symbol){.kind = SYM_CHAR, .as.chr = '('});
+
+  dump_item_set(grammar, cc1);
 
   return 0;
 }
