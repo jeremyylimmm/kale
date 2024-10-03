@@ -2,9 +2,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <stdint.h>
 #include <string.h>
+#include <assert.h>
 
+#include "common.h"
 #include "grammar.h"
 
 enum {
@@ -130,19 +131,7 @@ static Token require(Parser* p, int kind, char* message) {
   return lex(p);
 }
 
-static uint64_t fnv1a_hash(void* data, size_t len) {
-  uint64_t hash = 0xcbf29ce484222325;
-
-  for (size_t i = 0; i < len; ++i) {
-    uint8_t byte = ((uint8_t*)data)[i];
-    hash ^= (uint64_t)byte;
-    hash *= 0x100000001b3;
-  }
-
-  return hash;
-}
-
-static int to_id(Grammar* grammar, char* string) {
+int to_id(Grammar* grammar, char* string) {
   int i = fnv1a_hash(string, strlen(string)) % GRAMMAR_MAX_STRINGS;
 
   for (int j = 0; j < GRAMMAR_MAX_STRINGS; ++j) {
@@ -268,29 +257,69 @@ Grammar* parse_grammar(char* grammar_def) {
   return grammar;
 }
 
-static void dump_production_rhs(Grammar* grammar, ProductionRHS* prod) {
+void pretty_print_symbol(Grammar* grammar, Symbol* sym) {
+  switch (sym->kind) {
+    default:
+      printf("INVALID");
+      break;
+    case SYM_CHAR:
+      printf("'%c'", sym->as.chr);
+      break;
+    case SYM_EOF:
+      printf("eof");
+      break;
+    case SYM_NON_TERMINAL:
+      printf("%s", grammar->strings[sym->as.non_terminal]);
+      break;
+  }
+}
+
+void dump_symbol(Grammar* grammar, Symbol* sym) {
+  switch (sym->kind) {
+    default:
+      printf("INVALID");
+      break;
+    case SYM_CHAR:
+      printf("[char: '%c']", sym->as.chr);
+      break;
+    case SYM_EOF:
+      printf("[eof]");
+      break;
+    case SYM_NON_TERMINAL:
+      printf("[nt: %s]", grammar->strings[sym->as.non_terminal]);
+      break;
+  }
+}
+
+void dump_production_rhs(Grammar* grammar, ProductionRHS* prod) {
   for (int i = 0; i < prod->num_symbols; ++i) {
     if (i > 0) {
       printf(" ");
     }
 
     Symbol* sym = prod->symbols + i;
-
-    switch (sym->kind) {
-      default:
-        printf("INVALID");
-        break;
-      case SYM_CHAR:
-        printf("[char: '%c']", sym->as.chr);
-        break;
-      case SYM_EOF:
-        printf("[eof]");
-        break;
-      case SYM_NON_TERMINAL:
-        printf("[nt: %s]", grammar->strings[sym->as.non_terminal]);
-        break;
-    }
+    dump_symbol(grammar, sym);
   }
+}
+
+void dump_non_terminal(Grammar* grammar, int nt) {
+  assert(grammar->first_prod[nt]);
+
+  char* nt_name = grammar->strings[nt];
+
+  printf("%s -> ", nt_name);
+
+  for (ProductionRHS* prod = grammar->first_prod[nt]; prod; prod = prod->next) {
+    if (prod != grammar->first_prod[nt]) {
+      printf("%*s| ", (int)strlen(nt_name) + 2, "");
+    } 
+
+    dump_production_rhs(grammar, prod);
+
+    printf("\n");
+  }
+
+  printf("\n");
 }
 
 void dump_grammar(Grammar* grammar) {
@@ -299,20 +328,36 @@ void dump_grammar(Grammar* grammar) {
       continue;
     }
 
-    char* nt_name = grammar->strings[nt];
-
-    printf("%s -> ", nt_name);
-
-    for (ProductionRHS* prod = grammar->first_prod[nt]; prod; prod = prod->next) {
-      if (prod != grammar->first_prod[nt]) {
-        printf("%*s| ", (int)strlen(nt_name) + 2, "");
-      } 
-
-      dump_production_rhs(grammar, prod);
-
-      printf("\n");
-    }
-
-    printf("\n");
+    dump_non_terminal(grammar, nt);
   }
+}
+
+uint64_t symbol_hash(Symbol* symbol) {
+  return fnv1a_hash(symbol, sizeof(Symbol));
+}
+
+uint64_t production_rhs_hash(ProductionRHS* prod) {
+  uint64_t hashes[] = {
+    fnv1a_hash(&prod->num_symbols, sizeof(prod->num_symbols)),
+    fnv1a_hash(prod->symbols, prod->num_symbols * sizeof(Symbol))
+  };
+  return fnv1a_hash(hashes, sizeof(hashes));
+}
+
+int symbol_equal(Symbol* a, Symbol* b) {
+  return memcmp(a, b, sizeof(*a)) == 0;
+}
+
+int production_rhs_equal(ProductionRHS* a, ProductionRHS* b) {
+  if (a->num_symbols != b->num_symbols) {
+    return 0;
+  }
+
+  for (int i = 0; i < a->num_symbols; ++i) {
+    if (!symbol_equal(&a->symbols[i], &b->symbols[i])) {
+      return 0;
+    }
+  }
+
+  return 1;
 }

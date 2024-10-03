@@ -29,4 +29,6 @@ add_custom_command(
 add_dependencies(kale meta)
 
 target_link_libraries(frontend PRIVATE kale)
+
+target_include_directories(meta PRIVATE "meta")
 target_include_directories(frontend PRIVATE "kale")
