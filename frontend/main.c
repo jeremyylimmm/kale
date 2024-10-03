@@ -24,7 +24,5 @@ int main() {
 
   dump_ast(ast);
 
-  allocator_tests(global_scratch_lib);
-
   return 0;
 }
