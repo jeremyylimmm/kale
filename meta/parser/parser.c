@@ -775,7 +775,7 @@ int main() {
   }
 
   if (fopen_s(&file, "generated\\lr_tables.h", "w")) {
-    fprintf(stderr, "Failed to write parser.c\n");
+    fprintf(stderr, "Failed to write lr tables\n");
     return 1;
   }
 
