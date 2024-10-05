@@ -254,6 +254,26 @@ Grammar* parse_grammar(char* grammar_def) {
     exit(1);
   }
 
+  for (int nt = 0; nt < GRAMMAR_MAX_STRINGS; ++nt) {
+    ProductionRHS* head = grammar->first_prod[nt];
+
+    if (!head) {
+      continue;
+    }
+
+    for (ProductionRHS* prod = head; prod; prod = prod->next) {
+      for (int i = 0; i < prod->num_symbols; ++i) {
+        if (prod->symbols[i].kind == SYM_NON_TERMINAL) {
+          int name = prod->symbols[i].as.non_terminal;
+          if (!grammar->first_prod[name]) {
+            fprintf(stderr, "Non-terminal '%s' contains a production referencing non-terminal '%s' that doesn't exist.\n", grammar->strings[nt], grammar->strings[name]);
+            exit(1);
+          }
+        }
+      }
+    } 
+  }
+
   return grammar;
 }
 

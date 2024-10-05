@@ -7,6 +7,7 @@
 
 #define MAX_ITEMS_PER_SET 1024
 #define MAX_SYMBOLS_PER_FIRST 128
+#define COLLECTION_CAPACITY 1024
 
 typedef struct {
   int lhs;
@@ -17,6 +18,7 @@ typedef struct {
 
 typedef struct {
   Item* items[MAX_ITEMS_PER_SET];
+  int count;
 } ItemSet;
 
 typedef struct {
@@ -24,6 +26,16 @@ typedef struct {
   int count;
   Item** items;
 } ItemList;
+
+typedef struct {
+  ItemSet* sets[COLLECTION_CAPACITY];
+} Collection;
+
+typedef struct {
+  int capacity;
+  int count;
+  ItemSet** sets;
+} SetList;
 
 static uint64_t item_hash(Item* item) {
   uint64_t hashes[] = {
@@ -69,7 +81,10 @@ static int item_set_contains(ItemSet* set, Item* item) {
 
 static void item_set_add(ItemSet* set, Item* item) {
   int idx = item_set_find(set, item);
-  set->items[idx] = item;
+  if (!set->items[idx]) {
+    set->count++;
+    set->items[idx] = item;
+  }
 }
 
 static void item_list_add(ItemList* list, Item* item) {
@@ -84,6 +99,91 @@ static void item_list_add(ItemList* list, Item* item) {
 static Item* item_list_pop(ItemList* list) {
   assert(list->count);
   return list->items[--list->count];
+}
+
+static void set_list_add(SetList* list, ItemSet* set) {
+  if (list->count == list->capacity) {
+    list->capacity = list->capacity ? list->capacity * 2 : 8;
+    list->sets = realloc(list->sets, list->capacity * sizeof(*list->sets));
+  }
+
+  list->sets[list->count++] = set;
+}
+
+static ItemSet* set_list_pop(SetList* list) {
+  assert(list->count);
+  return list->sets[--list->count];
+}
+
+static int cmp_u64(const void* a, const void* b) {
+  return (int)(*(uint64_t*)a > *(uint64_t*)b);
+}
+
+static uint64_t hash_item_set(ItemSet* set) {
+  int num_hashes = 0;
+  uint64_t hashes[MAX_ITEMS_PER_SET] = {0};
+
+  for (int i = 0; i < MAX_ITEMS_PER_SET; ++i) {
+    if (!set->items[i]) {
+      continue;
+    }
+
+    hashes[num_hashes++] = item_hash(set->items[i]);
+  }
+
+  qsort(hashes, num_hashes, sizeof(hashes[0]), cmp_u64);
+
+  return fnv1a_hash(hashes, num_hashes * sizeof(hashes[0]));
+}
+
+static int item_set_equal(ItemSet* a, ItemSet* b) {
+  if (a->count != b->count) {
+    return 0;
+  }
+
+  for (int i = 0; i < MAX_ITEMS_PER_SET; ++i) {
+    if (!a->items[i]) {
+      continue;
+    }
+
+    if (!item_set_contains(b, a->items[i])) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+static int collection_find(Collection* cc, ItemSet* set) {
+  int i = hash_item_set(set) % COLLECTION_CAPACITY;
+
+  for (int j = 0; j < COLLECTION_CAPACITY; ++j) {
+    if (!cc->sets[i]) {
+      return i;
+    }
+
+    if (item_set_equal(cc->sets[i], set)) {
+      return i;
+    }
+
+    i = (i + 1) % COLLECTION_CAPACITY;
+  }
+
+  fprintf(stderr, "Collection capacity reached");
+  exit(1);
+}
+
+static void collection_add(Collection* cc, ItemSet* set) {
+  int idx = collection_find(cc, set);
+
+  if (cc->sets[idx] == NULL) {
+    cc->sets[idx] = set;
+  }
+}
+
+static int collection_contains(Collection* cc, ItemSet* set) {
+  int idx = collection_find(cc, set);
+  return cc->sets[idx] != NULL;
 }
 
 static void dump_item(Grammar* grammar, Item* item) {
@@ -297,13 +397,45 @@ int main() {
     },
   };
 
-  ItemSet* set = calloc(1, sizeof(ItemSet));
-  item_set_add(set, &root);
+  ItemSet* initial = calloc(1, sizeof(ItemSet));
+  item_set_add(initial, &root);
 
-  ItemSet* cc0 = closure(grammar, set);
-  ItemSet* cc1 = _goto(grammar, cc0, (Symbol){.kind = SYM_CHAR, .as.chr = '('});
+  ItemSet* cc0 = closure(grammar, initial);
 
-  dump_item_set(grammar, cc1);
+  Collection* cc = calloc(1, sizeof(Collection));
+  SetList stack = {0};
+
+  collection_add(cc, cc0);
+  set_list_add(&stack, cc0);
+
+  while (stack.count) {
+    ItemSet* cci = set_list_pop(&stack);
+
+    for (int i = 0; i < MAX_ITEMS_PER_SET; ++i) {
+      Item* item = cci->items[i];
+      if (!item) { continue; }
+
+      if (item->dot == item->rhs->num_symbols) {
+        continue;
+      }
+
+      Symbol x = item->rhs->symbols[item->dot];
+
+      ItemSet* temp = _goto(grammar, cci, x); 
+
+      if (!collection_contains(cc, temp)) {
+        set_list_add(&stack, temp);
+        collection_add(cc, temp);
+      }
+    }
+  }
+
+  printf("Canonical collection:\n");
+
+  for (int i = 0; i < COLLECTION_CAPACITY; ++i) {
+    if (!cc->sets[i]) { continue; }
+    dump_item_set(grammar, cc->sets[i]);
+  }
 
   return 0;
 }
