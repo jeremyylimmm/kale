@@ -774,17 +774,18 @@ int main() {
     }
   }
 
-  if (fopen_s(&file, "generated\\parser.c", "w")) {
+  if (fopen_s(&file, "generated\\lr_tables.h", "w")) {
     fprintf(stderr, "Failed to write parser.c\n");
     return 1;
   }
 
+  fprintf(file, "#pragma once\n\n");
   fprintf(file, "#include \"..\\frontend\\frontend.h\"\n\n");
 
   fprintf(file, "typedef enum {\n");
 
   for (int i = 0; i < num_states; ++i) {
-    fprintf(file, "  STATE_%d,\n", i);
+    fprintf(file, "  STATE_%d%s,\n", i, i == 0 ? " = 1" : "");
   }
 
   fprintf(file, "  NUM_STATES\n");
@@ -794,7 +795,7 @@ int main() {
 
   for (int i = 0; i < num_non_terminals; ++i) {
     int nt = non_terminals[i];
-    fprintf(file, "  NON_TERMINAL_%s,\n", grammar->strings[nt]);
+    fprintf(file, "  NON_TERMINAL_%s%s,\n", grammar->strings[nt], i == 0 ? " = 1" : "");
   }
 
   fprintf(file, "  NUM_NON_TERMINALS\n");
@@ -802,7 +803,7 @@ int main() {
 
   char* action_defs = (
     "typedef enum {\n"
-    "  ACTION_ACCEPT,\n"
+    "  ACTION_ACCEPT = 1,\n"
     "  ACTION_SHIFT,\n"
     "  ACTION_REDUCE,\n"
     "} ActionKind;\n"
@@ -843,13 +844,15 @@ int main() {
 
   fprintf(file, "};\n\n");
 
-  fprintf(file, "static int goto_table[NUM_STATES][NUM_NON_TERMINALS] = {\n");
+  fprintf(file, "static State goto_table[NUM_STATES][NUM_NON_TERMINALS] = {\n");
 
   for (GotoEntry* e = gotos; e; e = e->next) {
     fprintf(file, "  [STATE_%d][NON_TERMINAL_%s] = STATE_%d,\n", e->state, grammar->strings[e->nt], e->dest);
   }
 
   fprintf(file, "};\n\n");
+
+  fprintf(file, "static State initial_state = STATE_%d;\n\n", cc->states[collection_index(cc, cc0)]);
 
   fclose(file);
 

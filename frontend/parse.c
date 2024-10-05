@@ -1,245 +1,151 @@
 #include "frontend.h"
 #include "dynamic_array.h"
 
-#define X(name, ...) STATE_##name,
+#include "../generated/lr_tables.h"
+
 typedef enum {
-  #include "parse_state.def"
-  NUM_STATES
-} StateKind;
-#undef X
+  STACK_ITEM_STATE,
+  STACK_ITEM_TOKEN,
+  STACK_ITEM_NON_TERMINAL
+} StackItemKind;
+
+typedef enum {
+  CHILD_TOKEN,
+  CHILD_NODE
+} ChildKind;
+
+typedef struct Node Node;
 
 typedef struct {
-  StateKind kind;
-  Token token;
-} State;
+  ChildKind kind;
+  union {
+    Token token;
+    Node* node;
+  } as;
+} Child;
 
-typedef struct {
-  Arena* node_arena;
-
-  int cur_token;
-  TokenizedBuffer tokens;
-
-  DynamicArray(State) state_stack;
-  DynamicArray(AST*) node_stack;
-} Parser;
-
-static int _cap_token_index(Parser* p,int index) {
-  if (index > p->tokens.length-1) {
-    index = p->tokens.length-1;
-  }
-
-  return index;
-}
-
-static Token peekn(Parser* p, int offset) {
-  int index = p->cur_token + offset;
-  index = _cap_token_index(p, index);
-  return p->tokens.tokens[index];
-}
-
-static Token peek(Parser* p) {
-  return peekn(p, 0);
-}
-
-static Token lex(Parser* p) {
-  Token token = peek(p);
-  p->cur_token = _cap_token_index(p, p->cur_token + 1);
-  return token;
-}
-
-static void push_node(Parser* p, AST* node) {
-  dynamic_array_put(p->node_stack, node);
-}
-
-static AST* pop_node(Parser* p) {
-  return dynamic_array_pop(p->node_stack);
-}
-
-static State pop_state(Parser* p) {
-  return dynamic_array_pop(p->state_stack);
-}
-
-#define EMPTY_TOKEN ((Token){0})
-
-static void push_state0(Parser* p, StateKind kind, Token token) {
-  State state = {
-    .kind = kind,
-    .token =token
-  };
-
-  dynamic_array_put(p->state_stack, state);
-}
-
-static void push_state(Parser* p, StateKind kind) {
-  push_state0(p, kind, EMPTY_TOKEN);
-}
-
-static AST* new_node(Parser* p, ASTKind kind) {
-  assert(kind);
-  AST* node = arena_type(p->node_arena, AST);
-  node->kind = kind;
-  return node;
-}
-
-static uint64_t parse_integer(Token token) {
-  uint64_t value = 0;
-
-  for_range(int, i, token.length) {
-    value *= 10;
-    value += token.start[i] - '0';
-  }
-
-  return value;
-}
-
-typedef bool(*HandleFunc)(Parser*, Token);
-
-static bool handle_primary(Parser* p, Token token) {
-  (void)token;
-
-  switch (peek(p).kind) {
-    default:
-      assert(false);
-      return false;
-
-    case TOKEN_INTEGER_LITERAL:  {
-      AST* node = new_node(p, AST_INTEGER_LITERAL);
-      node->as.integer_literal = parse_integer(lex(p));
-      push_node(p, node);
-      return true;
-    }
-  }
-}
-
-static ASTKind addition_kind(Token token) {
-  switch (token.kind) {
-    default:
-      return AST_INVALID;
-    case '+':
-      return AST_ADD;
-    case '-':
-      return AST_SUB;
-  }
-}
-
-static ASTKind factor_kind(Token token) {
-  switch (token.kind) {
-    default:
-      return AST_INVALID;
-    case '*':
-      return AST_MUL;
-    case '/':
-      return AST_DIV;
-  }
-}
-
-static void binary(Parser* p, ASTKind kind) {
-  AST* rhs = pop_node(p);
-  AST* lhs = pop_node(p);
-
-  AST* node = new_node(p, kind);
-  node->as.bin[0] = lhs;
-  node->as.bin[1] = rhs;
-
-  push_node(p, node);
-}
-
-static bool handle_addition(Parser* p, Token token) {
-  (void)token;
-
-  push_state(p, STATE_addition_infix);
-  push_state(p, STATE_factor);
-
-  return true;
-}
-
-static bool handle_addition_infix(Parser* p, Token token) {
-  (void)token;
-
-  if (addition_kind(peek(p))) {
-    Token op = lex(p);
-    push_state0(p, STATE_addition_postfix, op);
-    push_state(p, STATE_factor);
-  }
-
-  return true;
-}
-
-static bool handle_addition_postfix(Parser* p, Token token) {
-  ASTKind op = addition_kind(token);
-  binary(p, op);
-  push_state(p, STATE_addition_infix);
-  return true;
-} 
-
-static bool handle_factor(Parser* p, Token token) {
-  (void)token;
-
-  push_state(p, STATE_factor_infix);
-  push_state(p, STATE_primary);
-
-  return true;
-}
-
-static bool handle_factor_infix(Parser* p, Token token) {
-  (void)token;
-
-  if (factor_kind(peek(p))) {
-    Token op = lex(p);
-    push_state0(p, STATE_factor_postfix, op);
-    push_state(p, STATE_primary);
-  }
-
-  return true;
-}
-
-static bool handle_factor_postfix(Parser* p, Token token) {
-  ASTKind op = factor_kind(token);
-  binary(p, op);
-  push_state(p, STATE_factor_infix);
-  return true;
-} 
-
-static bool handle_expr(Parser* p, Token token) {
-  (void)token;
-  push_state(p, STATE_addition);
-  return true;
-}
-
-#define X(name, ...) [STATE_##name] = handle_##name,
-HandleFunc handle_table[NUM_STATES] = {
-  #include "parse_state.def"
+struct Node {
+  NonTerminal kind;
+  int num_children;
+  Child* children;
 };
-#undef X
+
+typedef struct {
+  StackItemKind kind;
+  union {
+    State state;
+    Token token;
+    struct {
+      NonTerminal which;
+      Node* node;
+    } nt;
+  } as;
+} StackItem;
 
 AST* parse(Arena* arena, TokenizedBuffer tokens) {
-  AST* result = NULL;
-
   Scratch scratch = global_scratch(1, &arena);
   Allocator* scratch_allocator = new_allocator(scratch.arena);
 
-  Parser p = {
-    .node_arena = arena,
-    .tokens = tokens,
-    .state_stack = new_dynamic_array(scratch_allocator),
-    .node_stack = new_dynamic_array(scratch_allocator),
+  int cur_token = 0;
+
+  #define PEEK() (assert(cur_token < tokens.length), tokens.tokens[cur_token])
+  #define LEX() (assert(cur_token < tokens.length), tokens.tokens[cur_token++])
+
+  #define TOP_STATE() (assert(dynamic_array_length(stack) && stack[dynamic_array_length(stack)-1].kind == STACK_ITEM_STATE), stack[dynamic_array_length(stack)-1].as.state)
+        
+  DynamicArray(StackItem) stack = new_dynamic_array(scratch_allocator);
+
+  StackItem first = {
+    .kind = STACK_ITEM_STATE,
+    .as.state = initial_state
   };
 
-  push_state(&p, STATE_expr);
+  dynamic_array_put(stack, first);
 
-  while (dynamic_array_length(p.state_stack)) {
-    State state = pop_state(&p);
+  bool done = false;
 
-    HandleFunc handle = handle_table[state.kind];
+  while (!done) {
+    State _state = TOP_STATE();
+    Action action = action_table[_state][PEEK().kind];
 
-    if(!handle(&p, state.token)) {
-      goto end;
+    switch (action.kind) {
+      default:
+        assert(false && "parsing error!");
+        break;
+      case ACTION_REDUCE: {
+        int num_children = action.as.reduce.count;
+        Child* children = arena_array(arena, Child, num_children);
+
+        for (int i = 0; i < num_children; ++i) {
+          StackItem x0 = dynamic_array_pop(stack);
+          StackItem x1 = dynamic_array_pop(stack);
+
+          assert(x0.kind == STACK_ITEM_STATE);
+
+          switch (x1.kind) {
+            default:
+              assert(false);
+              break;
+            case STACK_ITEM_NON_TERMINAL:
+              children[i] = (Child) {
+                .kind = CHILD_NODE,
+                .as.node = x1.as.nt.node
+              };
+              break;
+            case STACK_ITEM_TOKEN:
+              children[i] = (Child) {
+                .kind = CHILD_TOKEN,
+                .as.token = x1.as.token
+              };
+              break;
+          }
+        }
+
+        Node* node = arena_type(arena, Node);
+        node->num_children = num_children;
+        node->children = children;
+        node->kind = action.as.reduce.nt;
+
+        State prev_state = TOP_STATE(); 
+        State new_state = goto_table[prev_state][node->kind];
+
+        StackItem nt_item = {
+          .kind = STACK_ITEM_NON_TERMINAL,
+          .as.nt.which = node->kind,
+          .as.nt.node = node
+        };
+
+        StackItem new_state_item = {
+          .kind = STACK_ITEM_STATE,
+          .as.state = new_state
+        };
+
+        dynamic_array_put(stack, nt_item);
+        dynamic_array_put(stack, new_state_item);
+      } break;
+
+      case ACTION_SHIFT: {
+        StackItem tok_item = {
+          .kind = STACK_ITEM_TOKEN,
+          .as.token = LEX()
+        };
+
+        StackItem state_item = {
+          .kind = STACK_ITEM_STATE,
+          .as.state = action.as.shift.state
+        };
+
+        dynamic_array_put(stack, tok_item);
+        dynamic_array_put(stack, state_item);
+      } break;
+
+      case ACTION_ACCEPT:
+        done = true;  
+        break;
     }
   }
 
-  result = pop_node(&p);
-
-  end:
   scratch_release(&scratch);
-  return result;
+
+  return NULL;
 }
