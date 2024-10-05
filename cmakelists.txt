@@ -19,6 +19,8 @@ add_executable(meta ${META_SOURCES})
 add_library(kale STATIC ${KALE_SOURCES})
 add_executable(frontend ${FRONTEND_SOURCES})
 
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/generated)
+
 add_custom_command(
   TARGET meta POST_BUILD
   COMMAND meta
