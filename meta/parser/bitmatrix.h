@@ -9,11 +9,6 @@ typedef struct {
   uint64_t words[1];
 } BitMatrix;
 
-typedef struct {
-  uint64_t count;
-  uint64_t words[1];
-} Bitset;
-
 static BitMatrix* new_bitmatrix(int rows, int columns) {
   uint64_t n = rows * columns;
   uint64_t num_words = (n+63)/64;
@@ -42,22 +37,12 @@ static void bitmatrix_set(BitMatrix* bm, uint64_t row, uint64_t column) {
   bm->words[index/64] |= (uint64_t)1 << (index%64);
 }
 
-static Bitset* new_bitset(uint64_t count) {
-  uint64_t num_words = (count + 63)/64;
-  size_t alloc_size = offsetof(Bitset, words) + num_words * sizeof(uint64_t);
+#define BITSET_WORDS(count) (((count)+63)/64)
 
-  Bitset* bs = calloc(1, alloc_size);
-  bs->count = count;
-
-  return bs;
+static int bitset_query(uint64_t* bs, uint64_t index) {
+  return (bs[index/64] >> (index%64)) & 1;
 }
 
-static int bitset_query(Bitset* bs, uint64_t index) {
-  assert(index < bs->count);
-  return (bs->words[index/64] >> (index%64)) & 1;
-}
-
-static void bitset_set(Bitset* bs, uint64_t index) {
-  assert(index < bs->count);
-  bs->words[index/64] |= (uint64_t)1 << (index%64);
+static void bitset_set(uint64_t* bs, uint64_t index) {
+  bs[index/64] |= (uint64_t)1 << (index%64);
 }

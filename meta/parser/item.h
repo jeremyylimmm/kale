@@ -21,7 +21,7 @@ struct ItemSet {
   int count;
   int capacity;
   Item* items;
-  Bitset* bits;
+  uint64_t* bits;
 };
 
 typedef struct {
@@ -93,7 +93,7 @@ static void item_set_add(ItemSet* set, Item* item) {
     ItemSet temp = {
       .capacity = new_capacity,
       .items = calloc(new_capacity, sizeof(set->items[0])),
-      .bits = new_bitset(new_capacity)
+      .bits = calloc(BITSET_WORDS(new_capacity), sizeof(uint64_t))
     };
 
     for (int i = 0; i < set->capacity; ++i) {

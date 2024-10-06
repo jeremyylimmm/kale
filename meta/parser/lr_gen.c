@@ -74,6 +74,39 @@ static void print_action_entry(FILE* file, ActionEntry* e, char* member, char* f
   fprintf(file, ",\n");
 }
 
+static void get_terminals(Grammar* grammar, SymbolSet* set, int* ids, int* out_count) {
+  memset(set, 0, sizeof(*set));
+
+  for (int nt = 0; nt < GRAMMAR_MAX_STRINGS; ++nt) {
+    if (!grammar->first_prod[nt]) { continue; }
+
+    for (ProductionRHS* prod = grammar->first_prod[nt]; prod; prod = prod->next)
+    {
+      for (int i = 0; i < prod->num_symbols; ++i)
+      {
+        Symbol sym = prod->symbols[i];
+        if (sym.kind == SYM_NON_TERMINAL) {
+          continue;
+        } 
+
+        symbol_set_add(set, sym);
+      }
+    }
+  }
+
+  symbol_set_add(set, (Symbol){.kind = SYM_EOF});
+
+  int count = 0;
+
+  for (int i = 0; i < SYMBOL_SET_CAPACITY; ++i) {
+    if (bitset_query(set->bits, i)) {
+      ids[i] = count++;
+    }
+  }
+
+  *out_count = count;
+}
+
 int main() {
   FILE* file;
   if (fopen_s(&file, "meta/grammar.txt", "r")) {
@@ -93,21 +126,10 @@ int main() {
 
   Grammar* grammar = parse_grammar(grammar_def);
 
-  SymbolSet* terminals = calloc(1, sizeof(SymbolSet));
-
-  for (int nt = 0; nt < GRAMMAR_MAX_STRINGS; ++nt) {
-    if (!grammar->first_prod[nt]) { continue; }
-    for (ProductionRHS* prod = grammar->first_prod[nt]; prod; prod = prod->next) {
-      for (int i = 0; i < prod->num_symbols; ++i) {
-        Symbol sym = prod->symbols[i];
-        if (sym.kind != SYM_NON_TERMINAL) {
-          symbol_set_add(terminals, sym);
-        }
-      }
-    }
-  }
-
-  symbol_set_add(terminals, (Symbol){.kind = SYM_EOF});
+  SymbolSet terminals;
+  int terminal_ids[SYMBOL_SET_CAPACITY];
+  int num_terminals;
+  get_terminals(grammar, &terminals, terminal_ids, &num_terminals);
 
   Collection* cc = build_canonical_collection(grammar);
 
@@ -119,17 +141,6 @@ int main() {
   for (int i = 0; i < COLLECTION_CAPACITY; ++i) {
     if (!cc->sets[i]) { continue; }
     states[i] = num_states++;
-  }
-
-  int num_terminals = 0;
-  int terminal_column[SYMBOL_SET_CAPACITY];
-
-  for (int i = 0; i < SYMBOL_SET_CAPACITY; ++i) {
-    if (!symbol_set_check(terminals, i)) {
-      continue;
-    }
-
-    terminal_column[i] = num_terminals++;
   }
 
   int num_non_terminals = 0;
@@ -163,7 +174,7 @@ int main() {
 
   #define CHECK_ACTION(state, term)\
     do {\
-      int col = terminal_column[symbol_set_get_index(terminals, term)]; \
+      int col = terminal_ids[symbol_set_get_index(&terminals, term)]; \
       \
       if (bitmatrix_query(action_table, state, col)) { \
         fprintf(stderr, "Ambiguous grammar.\n"); \

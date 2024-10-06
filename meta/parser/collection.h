@@ -123,7 +123,7 @@ static Collection* build_canonical_collection(Grammar* grammar) {
     int table_idx = collection_index(cc, cci);
 
     for (int i = 0; i < SYMBOL_SET_CAPACITY; ++i) {
-      if (!symbol_set_check(xs, i)) { continue; }
+      if (!bitset_query(xs->bits, i)) { continue; }
       Symbol x = xs->symbols[i];
       
       ItemSet* temp = _goto(grammar, cci, x); 
