@@ -5,7 +5,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "common.h"
+#include "../common.h"
 #include "grammar.h"
 
 enum {
