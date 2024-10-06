@@ -5,8 +5,7 @@
 
 #include "grammar.h"
 #include "bitmatrix.h"
-
-#define MAX_SYMBOLS_PER_FIRST 128
+#include "vec.h"
 
 typedef struct {
   int lhs;
@@ -23,12 +22,6 @@ struct ItemSet {
   Item* items;
   uint64_t* bits;
 };
-
-typedef struct {
-  int capacity;
-  int count;
-  Item** items;
-} ItemList;
 
 static uint64_t item_hash(Item* item) {
   uint64_t hashes[] = {
@@ -109,20 +102,6 @@ static void item_set_add(ItemSet* set, Item* item) {
   }
 
   _item_set_add(set, item);
-}
-
-static void item_list_add(ItemList* list, Item* item) {
-  if (list->count == list->capacity) {
-    list->capacity = list->capacity ? list->capacity * 2 : 8;
-    list->items = realloc(list->items, list->capacity * sizeof(*list->items));
-  }
-
-  list->items[list->count++] = item;
-}
-
-static Item* item_list_pop(ItemList* list) {
-  assert(list->count);
-  return list->items[--list->count];
 }
 
 static int cmp_u64(const void* a, const void* b) {
@@ -211,57 +190,60 @@ static void dump_item_set(Grammar* grammar, ItemSet* set) {
   printf("}\n\n");
 }
 
-static void nt_first(Grammar* grammar, uint64_t* visited, Symbol* first, int* num_first, int nt) {
-  if ((visited[nt/64] >> (nt % 64)) & 1) {
+static void nt_first(Grammar* grammar, uint64_t* visited, Vec(Symbol)* firsts, int nt) {
+  if (bitset_query(visited, nt)) {
     return;
   }
-  visited[nt/64] |= (uint64_t)1 << (nt % 64);
+  bitset_set(visited, nt);
 
   for (ProductionRHS* prod = grammar->first_prod[nt]; prod; prod = prod->next) {
     Symbol x = prod->symbols[0];
 
     if (x.kind == SYM_NON_TERMINAL) {
-      nt_first(grammar, visited, first, num_first, x.as.non_terminal);
+      nt_first(grammar, visited, firsts, x.as.non_terminal);
     }
     else {
-      first[(*num_first)++] = x;
+      vec_put(*firsts, x);
     }
   }
 }
 
-static void first_terminal_of_remainder(Grammar* grammar, Symbol* first, int* num_first, Item* item) {
-  *num_first = 0;
+static void first_terminal_of_remainder(Grammar* grammar, Vec(Symbol)* firsts, Item* item) {
+  vec_clear(*firsts);
 
   int idx = item->dot + 1;
 
   if (idx >= item->rhs->num_symbols) {
-    first[(*num_first)++] = item->lookahead;
+    vec_put(*firsts, item->lookahead);
     return;
   }
 
   Symbol x = item->rhs->symbols[idx];
   if (x.kind != SYM_NON_TERMINAL) {
-    first[(*num_first)++] = x;
+    vec_put(*firsts, x);
     return;
   }
 
-  uint64_t visited[(GRAMMAR_MAX_STRINGS + 63) / 64] = {0};
-  nt_first(grammar, visited, first, num_first, x.as.non_terminal);
+  uint64_t visited[BITSET_WORDS(GRAMMAR_MAX_STRINGS)] = {0};
+  nt_first(grammar, visited, firsts, x.as.non_terminal);
 }
 
-static Item* new_item(int lhs, ProductionRHS* rhs, int dot, Symbol lookahead) {
-  Item* item = calloc(1, sizeof(Item));
-  item->lhs = lhs;
-  item->rhs = rhs;
-  item->dot = dot;
-  item->lookahead = lookahead;
-  return item;
+static Item new_item(int lhs, ProductionRHS* rhs, int dot, Symbol lookahead) {
+  assert(dot <= rhs->num_symbols);
+  return (Item) {
+    .lhs = lhs,
+    .rhs = rhs,
+    .dot = dot,
+    .lookahead = lookahead,
+  };
 }
 
-static void populate_item_set_and_stack(ItemSet* set, ItemSet* set_dest, ItemList* stack) {
-  for (int i = 0; i < set->capacity; ++i) {
+static void populate_item_set_and_stack(ItemSet* set, ItemSet* set_dest, Vec(Item)* stack) {
+  for (int i = 0; i < set->capacity; ++i)
+  {
     if (bitset_query(set->bits, i)) {
-      item_list_add(stack, &set->items[i]);
+      vec_put(*stack, set->items[i]);
+
       if (set_dest) {
         item_set_add(set_dest, &set->items[i]);
       }
@@ -271,21 +253,20 @@ static void populate_item_set_and_stack(ItemSet* set, ItemSet* set_dest, ItemLis
 
 static ItemSet* closure(Grammar* grammar, ItemSet* set) {
   ItemSet* result = calloc(1, sizeof(ItemSet));
-  ItemList stack = {0};
+  Vec(Item) stack = NULL;
 
   populate_item_set_and_stack(set, result, &stack);
 
-  int num_first;
-  Symbol first[MAX_SYMBOLS_PER_FIRST];
+  Vec(Symbol) firsts = NULL;
 
-  while (stack.count) {
-    Item* item = item_list_pop(&stack);
+  while (vec_length(stack)) {
+    Item item = vec_pop(stack);
 
-    if (item->dot == item->rhs->num_symbols) {
+    if (item.dot == item.rhs->num_symbols) {
       continue;
     }
 
-    Symbol c = item->rhs->symbols[item->dot];
+    Symbol c = item.rhs->symbols[item.dot];
 
     if (c.kind != SYM_NON_TERMINAL) {
       continue;
@@ -294,53 +275,54 @@ static ItemSet* closure(Grammar* grammar, ItemSet* set) {
     ProductionRHS* head = grammar->first_prod[c.as.non_terminal];
 
     for (ProductionRHS* p = head; p; p = p->next) {
-      first_terminal_of_remainder(grammar, first, &num_first, item);
+      first_terminal_of_remainder(grammar, &firsts, &item);
 
-      for (int i = 0; i < num_first; ++i) {
-        Symbol b = first[i];
-        Item* ni = new_item(c.as.non_terminal, p, 0, b);
+      for (int i = 0; i < vec_length(firsts); ++i) {
+        Symbol b = firsts[i];
+        Item ni = new_item(c.as.non_terminal, p, 0, b);
         
-        if (!item_set_contains(result, ni)) {
-          item_set_add(result, ni);
-          item_list_add(&stack, ni);
+        if (!item_set_contains(result, &ni)) {
+          item_set_add(result, &ni);
+          vec_put(stack, ni);
         }
       } 
     }
   }
 
-  free(stack.items);
+  vec_free(stack);
+  vec_free(firsts);
 
   return result;
 } 
 
 static ItemSet* _goto(Grammar* grammar, ItemSet* s, Symbol x) {
-  ItemList stack = {0};
+  Vec(Item) stack = NULL;
   ItemSet* moved = calloc(1, sizeof(ItemSet));
 
   populate_item_set_and_stack(s, NULL, &stack);
 
-  while (stack.count) {
-    Item* item = item_list_pop(&stack);
+  while (vec_length(stack)) {
+    Item item = vec_pop(stack);
 
-    if (item->dot == item->rhs->num_symbols) {
+    if (item.dot == item.rhs->num_symbols) {
       continue;
     }
 
-    Symbol next = item->rhs->symbols[item->dot];
+    Symbol next = item.rhs->symbols[item.dot];
 
     if (!symbol_equal(&next, &x)) {
       continue;
     }
     
-    Item* ni = new_item(item->lhs, item->rhs, item->dot + 1, item->lookahead);
+    Item ni = new_item(item.lhs, item.rhs, item.dot + 1, item.lookahead);
 
-    if (!item_set_contains(moved, ni)) {
-      item_set_add(moved, ni);
-      item_list_add(&stack, ni);
+    if (!item_set_contains(moved, &ni)) {
+      item_set_add(moved, &ni);
+      vec_put(stack, ni);
     }
   }
 
-  free(stack.items);
+  vec_free(stack);
 
   ItemSet* result = closure(grammar, moved);
   free(moved);

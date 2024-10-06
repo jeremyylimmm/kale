@@ -1,7 +1,8 @@
 #pragma once 
 
 #include "item.h"
-#include "symbol_set.h"
+#include "symbol.h"
+#include "vec.h"
 
 #define COLLECTION_CAPACITY 1024
 
@@ -17,26 +18,6 @@ typedef struct {
   ItemSet* sets[COLLECTION_CAPACITY];
   Transition* transitions[COLLECTION_CAPACITY];
 } Collection;
-
-typedef struct {
-  int capacity;
-  int count;
-  ItemSet** sets;
-} SetList;
-
-static void set_list_add(SetList* list, ItemSet* set) {
-  if (list->count == list->capacity) {
-    list->capacity = list->capacity ? list->capacity * 2 : 8;
-    list->sets = realloc(list->sets, list->capacity * sizeof(*list->sets));
-  }
-
-  list->sets[list->count++] = set;
-}
-
-static ItemSet* set_list_pop(SetList* list) {
-  assert(list->count);
-  return list->sets[--list->count];
-}
 
 static int collection_find(Collection* cc, ItemSet* set) {
   int i = hash_item_set(set) % COLLECTION_CAPACITY;
@@ -70,7 +51,7 @@ static int collection_contains(Collection* cc, ItemSet* set) {
   return cc->sets[idx] != NULL;
 }
 
-static int collection_index(Collection* cc, ItemSet* set) {
+static int collection_table_index(Collection* cc, ItemSet* set) {
   int idx = collection_find(cc, set);
   assert(cc->sets[idx]);
   return idx;
@@ -95,15 +76,15 @@ static Collection* build_canonical_collection(Grammar* grammar) {
   Collection* cc = calloc(1, sizeof(Collection));
   cc->cc0 = cc0;
 
-  SetList stack = {0};
+  Vec(ItemSet*) stack = NULL;
 
   collection_add(cc, cc0);
-  set_list_add(&stack, cc0);
+  vec_put(stack, cc0);
 
   SymbolSet* xs = calloc(1, sizeof(SymbolSet));
 
-  while (stack.count) {
-    ItemSet* cci = set_list_pop(&stack);
+  while (vec_length(stack)) {
+    ItemSet* cci = vec_pop(stack);
 
     symbol_set_clear(xs);
 
@@ -120,7 +101,7 @@ static Collection* build_canonical_collection(Grammar* grammar) {
       symbol_set_add(xs, x);
     }
 
-    int table_idx = collection_index(cc, cci);
+    int table_idx = collection_table_index(cc, cci);
 
     for (int i = 0; i < SYMBOL_SET_CAPACITY; ++i) {
       if (!bitset_query(xs->bits, i)) { continue; }
@@ -129,7 +110,7 @@ static Collection* build_canonical_collection(Grammar* grammar) {
       ItemSet* temp = _goto(grammar, cci, x); 
 
       if (!collection_contains(cc, temp)) {
-        set_list_add(&stack, temp);
+        vec_put(stack, temp);
         collection_add(cc, temp);
       }
 
@@ -144,7 +125,7 @@ static Collection* build_canonical_collection(Grammar* grammar) {
   }
 
   free(xs);
-  free(stack.sets);
+  vec_free(stack);
 
   return cc;
 }

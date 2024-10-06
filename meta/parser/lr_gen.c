@@ -174,7 +174,7 @@ int main() {
 
   #define CHECK_ACTION(state, term)\
     do {\
-      int col = terminal_ids[symbol_set_get_index(&terminals, term)]; \
+      int col = terminal_ids[symbol_set_table_index(&terminals, term)]; \
       \
       if (bitmatrix_query(action_table, state, col)) { \
         fprintf(stderr, "Ambiguous grammar.\n"); \
@@ -191,7 +191,7 @@ int main() {
     int i = states[set_index];
 
     for (Transition* t = cc->transitions[set_index]; t; t = t->next) {
-      int j = states[collection_index(cc, t->set)];
+      int j = states[collection_table_index(cc, t->set)];
 
       if (t->x.kind == SYM_NON_TERMINAL) {
         CHECK_GOTO(i, t->x.as.non_terminal);
@@ -348,7 +348,7 @@ int main() {
 
   fprintf(file, "};\n\n");
 
-  fprintf(file, "static State initial_state = %d;\n\n", states[collection_index(cc, cc->cc0)]);
+  fprintf(file, "static State initial_state = %d;\n\n", states[collection_table_index(cc, cc->cc0)]);
 
   fclose(file);
 

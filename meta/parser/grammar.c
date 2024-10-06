@@ -352,20 +352,12 @@ void dump_grammar(Grammar* grammar) {
   }
 }
 
-uint64_t symbol_hash(Symbol* symbol) {
-  return fnv1a_hash(symbol, sizeof(Symbol));
-}
-
 uint64_t production_rhs_hash(ProductionRHS* prod) {
   uint64_t hashes[] = {
     fnv1a_hash(&prod->num_symbols, sizeof(prod->num_symbols)),
     fnv1a_hash(prod->symbols, prod->num_symbols * sizeof(Symbol))
   };
   return fnv1a_hash(hashes, sizeof(hashes));
-}
-
-int symbol_equal(Symbol* a, Symbol* b) {
-  return memcmp(a, b, sizeof(*a)) == 0;
 }
 
 int production_rhs_equal(ProductionRHS* a, ProductionRHS* b) {
