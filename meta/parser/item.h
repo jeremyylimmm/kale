@@ -69,6 +69,11 @@ static int item_set_contains(ItemSet* set, Item* item) {
   return bitset_query(set->bits, idx);
 }
 
+static void item_set_free(ItemSet* set) {
+  free(set->bits);
+  free(set->items);
+}
+
 static void _item_set_add(ItemSet* set, Item* item) {
   int idx = item_set_find(set, item);
 
@@ -95,8 +100,7 @@ static void item_set_add(ItemSet* set, Item* item) {
       }
     }
 
-    free(set->items);
-    free(set->bits);
+    item_set_free(set);
 
     *set = temp;
   }
@@ -108,13 +112,13 @@ static int cmp_u64(const void* a, const void* b) {
   return (int)(*(uint64_t*)a > *(uint64_t*)b);
 }
 
-static uint64_t hash_item_set(ItemSet* set) {
+static uint64_t hash_item_set(ItemSet set) {
   int num_hashes = 0;
-  uint64_t* hashes = calloc(set->capacity, sizeof(uint64_t));
+  uint64_t* hashes = calloc(set.capacity, sizeof(uint64_t));
 
-  for (int i = 0; i < set->capacity; ++i) {
-    if (bitset_query(set->bits, i)) {
-      hashes[num_hashes++] = item_hash(&set->items[i]);
+  for (int i = 0; i < set.capacity; ++i) {
+    if (bitset_query(set.bits, i)) {
+      hashes[num_hashes++] = item_hash(&set.items[i]);
     }
   }
 
@@ -238,24 +242,24 @@ static Item new_item(int lhs, ProductionRHS* rhs, int dot, Symbol lookahead) {
   };
 }
 
-static void populate_item_set_and_stack(ItemSet* set, ItemSet* set_dest, Vec(Item)* stack) {
-  for (int i = 0; i < set->capacity; ++i)
+static void populate_item_set_and_stack(ItemSet set, ItemSet* set_dest, Vec(Item)* stack) {
+  for (int i = 0; i < set.capacity; ++i)
   {
-    if (bitset_query(set->bits, i)) {
-      vec_put(*stack, set->items[i]);
+    if (bitset_query(set.bits, i)) {
+      vec_put(*stack, set.items[i]);
 
       if (set_dest) {
-        item_set_add(set_dest, &set->items[i]);
+        item_set_add(set_dest, &set.items[i]);
       }
     }
   }
 }
 
-static ItemSet* closure(Grammar* grammar, ItemSet* set) {
-  ItemSet* result = calloc(1, sizeof(ItemSet));
+static ItemSet closure(Grammar* grammar, ItemSet set) {
+  ItemSet result = {0};
   Vec(Item) stack = NULL;
 
-  populate_item_set_and_stack(set, result, &stack);
+  populate_item_set_and_stack(set, &result, &stack);
 
   Vec(Symbol) firsts = NULL;
 
@@ -281,8 +285,8 @@ static ItemSet* closure(Grammar* grammar, ItemSet* set) {
         Symbol b = firsts[i];
         Item ni = new_item(c.as.non_terminal, p, 0, b);
         
-        if (!item_set_contains(result, &ni)) {
-          item_set_add(result, &ni);
+        if (!item_set_contains(&result, &ni)) {
+          item_set_add(&result, &ni);
           vec_put(stack, ni);
         }
       } 
@@ -295,9 +299,9 @@ static ItemSet* closure(Grammar* grammar, ItemSet* set) {
   return result;
 } 
 
-static ItemSet* _goto(Grammar* grammar, ItemSet* s, Symbol x) {
+static ItemSet _goto(Grammar* grammar, ItemSet s, Symbol x) {
   Vec(Item) stack = NULL;
-  ItemSet* moved = calloc(1, sizeof(ItemSet));
+  ItemSet moved = {0};
 
   populate_item_set_and_stack(s, NULL, &stack);
 
@@ -316,16 +320,16 @@ static ItemSet* _goto(Grammar* grammar, ItemSet* s, Symbol x) {
     
     Item ni = new_item(item.lhs, item.rhs, item.dot + 1, item.lookahead);
 
-    if (!item_set_contains(moved, &ni)) {
-      item_set_add(moved, &ni);
+    if (!item_set_contains(&moved, &ni)) {
+      item_set_add(&moved, &ni);
       vec_put(stack, ni);
     }
   }
 
   vec_free(stack);
 
-  ItemSet* result = closure(grammar, moved);
-  free(moved);
+  ItemSet result = closure(grammar, moved);
+  item_set_free(&moved);
 
   return result;
 }

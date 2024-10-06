@@ -136,10 +136,10 @@ int main() {
   // Write the parser
 
   int num_states = 1;
-  int states[COLLECTION_CAPACITY];
+  int* states = calloc(cc->capacity, sizeof(int));
 
-  for (int i = 0; i < COLLECTION_CAPACITY; ++i) {
-    if (!cc->sets[i]) { continue; }
+  for (int i = 0; i < cc->capacity; ++i) {
+    if (!bitset_query(cc->bits, i)) { continue; }
     states[i] = num_states++;
   }
 
@@ -184,9 +184,10 @@ int main() {
       bitmatrix_set(action_table, state, col); \
     } while (0)
 
-  for (int set_index = 0; set_index < COLLECTION_CAPACITY; ++set_index) {
-    ItemSet* cci = cc->sets[set_index];
-    if (!cci) { continue; }
+  for (int set_index = 0; set_index < cc->capacity; ++set_index) {
+    if (!bitset_query(cc->bits, set_index)) { continue; }
+
+    ItemSet* cci = &cc->sets[set_index];
 
     int i = states[set_index];
 
