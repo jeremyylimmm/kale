@@ -12,6 +12,7 @@ enum {
   TOK_EOF,
   TOK_IDENTIFIER = 256,
   TOK_CHAR_LITERAL,
+  TOK_NAMED_TOKEN,
   TOK_ARROW
 } TokenKind;
 
@@ -52,6 +53,10 @@ static void error(int line, char* fmt, ...) {
   exit(1);
 }
 
+static int until(Parser* p, char c) {
+  return *p->lexer_char != c && *p->lexer_char != '\0' && *p->lexer_char != '\n';
+}
+
 static Token lex(Parser* p) {
   if (p->lexer_cache.start) {
     Token token = p->lexer_cache;
@@ -87,8 +92,22 @@ static Token lex(Parser* p) {
       if (lexer_match(p, '>'))
         kind = TOK_ARROW;
       break;
+    case '<':
+      while (until(p, '>')) {
+        p->lexer_char++;
+      }
+
+      if (*p->lexer_char != '>') {
+        error(line, "unterminated named token");
+      }
+
+      p->lexer_char++;
+
+      kind = TOK_NAMED_TOKEN;
+
+      break;
     case '\'':
-      while (*p->lexer_char != '\'' && *p->lexer_char != '\0' && *p->lexer_char != '\n') {
+      while (until(p, '\'')) {
         p->lexer_char++;
       }
 
@@ -181,6 +200,14 @@ static void parse_symbol(Grammar* grammar, ProductionRHS* prod, Token token) {
     case TOK_CHAR_LITERAL: {
       Symbol *sym = new_symbol(prod, SYM_CHAR, token.line);
       sym->as.chr = token.start[1];
+    } break;
+    case TOK_NAMED_TOKEN: {
+      Token modified = token; // Get rid of brackets
+      modified.start += 1;
+      modified.length -= 2;
+
+      Symbol* sym = new_symbol(prod, SYM_NAMED_TOKEN, token.line);
+      sym->as.named_token = to_id(grammar, tok_to_string(modified));
     } break;
   }
 }

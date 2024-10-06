@@ -1,7 +1,11 @@
-Goal -> List
+Goal -> Expr
 
-List -> List Pair
-      | Pair
+Expr -> Expr '+' Term
+      | Expr '-' Term
+      | Term
 
-Pair -> '(' Pair ')'
-      | '(' ')'
+Term -> Term '*' Factor
+      | Term '/' Factor
+      | Factor
+
+Factor -> <INTEGER_LITERAL>

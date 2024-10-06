@@ -11,6 +11,7 @@ typedef enum {
   SYM_INVALID,
   SYM_NON_TERMINAL,
   SYM_CHAR,
+  SYM_NAMED_TOKEN,
   SYM_EOF
 } SymbolKind;
 
@@ -21,6 +22,7 @@ struct Symbol {
   union {
     char chr;
     int non_terminal;
+    int named_token;
   } as;
 };
 
@@ -34,6 +36,13 @@ static uint64_t symbol_hash(Symbol* sym) {
     default:
       assert(0);
       return 0;
+    case SYM_NAMED_TOKEN: {
+      uint64_t h[] = {
+        sym->kind,
+        sym->as.named_token
+      };
+      return fnv1a_hash(h, sizeof(h)); 
+    }
     case SYM_NON_TERMINAL: {
       uint64_t h[] = {
         sym->kind,
@@ -66,6 +75,8 @@ static int symbol_equal(Symbol* a, Symbol* b) {
     default:
       assert(0);
       return 0;
+    case SYM_NAMED_TOKEN:
+      return a->as.named_token == b->as.named_token;
     case SYM_NON_TERMINAL:
       return a->as.non_terminal == b->as.non_terminal; 
     case SYM_CHAR:

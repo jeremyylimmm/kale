@@ -45,10 +45,13 @@ struct ActionEntry {
   Action action;
 };
 
-static void print_terminal_as_token_kind(FILE* file, Symbol sym) {
+static void print_terminal_as_token_kind(FILE* file, Grammar* grammar, Symbol sym) {
   switch (sym.kind) {
     default:
       assert(0);
+      break;
+    case SYM_NAMED_TOKEN:
+      fprintf(file, "TOKEN_%s", grammar->strings[sym.as.named_token]);
       break;
     case SYM_CHAR:
       fprintf(file, "'%c'", sym.as.chr);
@@ -59,9 +62,9 @@ static void print_terminal_as_token_kind(FILE* file, Symbol sym) {
   }
 }
 
-static void print_action_entry(FILE* file, ActionEntry* e, char* member, char* fmt, ...) {
+static void print_action_entry(FILE* file, Grammar* grammar, ActionEntry* e, char* member, char* fmt, ...) {
   fprintf(file, "  [%d][", e->state);
-  print_terminal_as_token_kind(file, e->sym);
+  print_terminal_as_token_kind(file, grammar, e->sym);
   fprintf(file, "].%s = ", member);
 
   va_list ap;
@@ -325,16 +328,16 @@ int main() {
         assert(0);
         break;
       case ACT_ACCEPT:
-        print_action_entry(file, e, "kind", "ACTION_ACCEPT");
+        print_action_entry(file, grammar, e, "kind", "ACTION_ACCEPT");
         break;
       case ACT_SHIFT:
-        print_action_entry(file, e, "kind", "ACTION_SHIFT");
-        print_action_entry(file, e, "state_or_count", "%d", e->action.as.shift.state);
+        print_action_entry(file, grammar, e, "kind", "ACTION_SHIFT");
+        print_action_entry(file, grammar, e, "state_or_count", "%d", e->action.as.shift.state);
         break;
       case ACT_REDUCE:
-        print_action_entry(file, e, "kind", "ACTION_REDUCE");
-        print_action_entry(file, e, "state_or_count", "%d", e->action.as.reduce.count);
-        print_action_entry(file, e, "nt", "NON_TERMINAL_%s", grammar->strings[e->action.as.reduce.nt]);
+        print_action_entry(file, grammar, e, "kind", "ACTION_REDUCE");
+        print_action_entry(file, grammar, e, "state_or_count", "%d", e->action.as.reduce.count);
+        print_action_entry(file, grammar, e, "nt", "NON_TERMINAL_%s", grammar->strings[e->action.as.reduce.nt]);
         break;
     }
   }
