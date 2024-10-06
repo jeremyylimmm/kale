@@ -5,9 +5,17 @@
 
 #define COLLECTION_CAPACITY 1024
 
+typedef struct Transition Transition;
+struct Transition {
+  Transition* next;
+  Symbol x;
+  struct ItemSet* set;
+};
+
 typedef struct {
   ItemSet* cc0;
   ItemSet* sets[COLLECTION_CAPACITY];
+  Transition* transitions[COLLECTION_CAPACITY];
 } Collection;
 
 typedef struct {
@@ -99,9 +107,10 @@ static Collection* build_canonical_collection(Grammar* grammar) {
 
     symbol_set_clear(xs);
 
-    for (int i = 0; i < MAX_ITEMS_PER_SET; ++i) {
-      Item* item = cci->items[i];
-      if (!item) { continue; }
+    for (int i = 0; i < cci->capacity; ++i) {
+      if (!bitset_query(cci->bits, i)) { continue; }
+
+      Item* item = &cci->items[i];
 
       if (item->dot == item->rhs->num_symbols) {
         continue;
@@ -110,6 +119,8 @@ static Collection* build_canonical_collection(Grammar* grammar) {
       Symbol x = item->rhs->symbols[item->dot];
       symbol_set_add(xs, x);
     }
+
+    int table_idx = collection_index(cc, cci);
 
     for (int i = 0; i < SYMBOL_SET_CAPACITY; ++i) {
       if (!symbol_set_check(xs, i)) { continue; }
@@ -127,8 +138,8 @@ static Collection* build_canonical_collection(Grammar* grammar) {
       t->x = x;
       t->set = temp;
 
-      t->next = cci->transitions;
-      cci->transitions = t;
+      t->next = cc->transitions[table_idx];
+      cc->transitions[table_idx] = t;
     }
   }
 

@@ -1,10 +1,11 @@
 #pragma once
 
 #include <stdio.h>
+#include <memory.h>
 
 #include "grammar.h"
+#include "bitmatrix.h"
 
-#define MAX_ITEMS_PER_SET 1024
 #define MAX_SYMBOLS_PER_FIRST 128
 
 typedef struct {
@@ -14,19 +15,13 @@ typedef struct {
   Symbol lookahead;
 } Item;
 
-typedef struct Transition Transition;
 typedef struct ItemSet ItemSet;
 
 struct ItemSet {
-  Item* items[MAX_ITEMS_PER_SET];
   int count;
-  Transition* transitions;
-};
-
-struct Transition {
-  Transition* next;
-  Symbol x;
-  struct ItemSet* set;
+  int capacity;
+  Item* items;
+  Bitset* bits;
 };
 
 typedef struct {
@@ -54,18 +49,18 @@ static int item_equal(Item* a, Item* b) {
 }
 
 static int item_set_find(ItemSet* set, Item* item) {
-  int i = item_hash(item) % MAX_ITEMS_PER_SET;
+  int i = item_hash(item) % set->capacity;
 
-  for (int j = 0; j < MAX_ITEMS_PER_SET; ++j) {
-    if (!set->items[i]) {
+  for (int j = 0; j < set->capacity; ++j) {
+    if (!bitset_query(set->bits, i)) {
       return i;
     }
 
-    if (item_equal(set->items[i], item)) {
+    if (item_equal(&set->items[i], item)) {
       return i;
     }
 
-    i = (i + 1) % MAX_ITEMS_PER_SET;
+    i = (i + 1) % set->capacity;
   }
 
   fprintf(stderr, "Maximum number of LR items exceeded");
@@ -73,16 +68,47 @@ static int item_set_find(ItemSet* set, Item* item) {
 }
 
 static int item_set_contains(ItemSet* set, Item* item) {
+  if (set->count == 0) {
+    return 0;
+  }
+
   int idx = item_set_find(set, item);
-  return set->items[idx] != NULL;
+  return bitset_query(set->bits, idx);
+}
+
+static void _item_set_add(ItemSet* set, Item* item) {
+  int idx = item_set_find(set, item);
+
+  if (!bitset_query(set->bits, idx)) {
+    set->count++;
+    set->items[idx] = *item;
+    bitset_set(set->bits, idx);
+  }
 }
 
 static void item_set_add(ItemSet* set, Item* item) {
-  int idx = item_set_find(set, item);
-  if (!set->items[idx]) {
-    set->count++;
-    set->items[idx] = item;
+  if (!set->capacity || (float)set->count >= (float)set->capacity * 0.5f) {
+    int new_capacity = set->capacity ? set->capacity * 2 : 8;
+
+    ItemSet temp = {
+      .capacity = new_capacity,
+      .items = calloc(new_capacity, sizeof(set->items[0])),
+      .bits = new_bitset(new_capacity)
+    };
+
+    for (int i = 0; i < set->capacity; ++i) {
+      if (bitset_query(set->bits, i)) {
+        _item_set_add(&temp, &set->items[i]);
+      }
+    }
+
+    free(set->items);
+    free(set->bits);
+
+    *set = temp;
   }
+
+  _item_set_add(set, item);
 }
 
 static void item_list_add(ItemList* list, Item* item) {
@@ -105,19 +131,21 @@ static int cmp_u64(const void* a, const void* b) {
 
 static uint64_t hash_item_set(ItemSet* set) {
   int num_hashes = 0;
-  uint64_t hashes[MAX_ITEMS_PER_SET] = {0};
+  uint64_t* hashes = calloc(set->capacity, sizeof(uint64_t));
 
-  for (int i = 0; i < MAX_ITEMS_PER_SET; ++i) {
-    if (!set->items[i]) {
-      continue;
+  for (int i = 0; i < set->capacity; ++i) {
+    if (bitset_query(set->bits, i)) {
+      hashes[num_hashes++] = item_hash(&set->items[i]);
     }
-
-    hashes[num_hashes++] = item_hash(set->items[i]);
   }
 
   qsort(hashes, num_hashes, sizeof(hashes[0]), cmp_u64);
 
-  return fnv1a_hash(hashes, num_hashes * sizeof(hashes[0]));
+  uint64_t result = fnv1a_hash(hashes, num_hashes * sizeof(hashes[0]));
+  
+  free(hashes);
+
+  return result;
 }
 
 static int item_set_equal(ItemSet* a, ItemSet* b) {
@@ -125,19 +153,16 @@ static int item_set_equal(ItemSet* a, ItemSet* b) {
     return 0;
   }
 
-  for (int i = 0; i < MAX_ITEMS_PER_SET; ++i) {
-    if (!a->items[i]) {
-      continue;
-    }
-
-    if (!item_set_contains(b, a->items[i])) {
-      return 0;
+  for (int i = 0; i < a->capacity; ++i) {
+    if (bitset_query(a->bits, i)) {
+      if (!item_set_contains(b, &a->items[i])) {
+        return 0;
+      }
     }
   }
 
   return 1;
 }
-
 
 static void dump_item(Grammar* grammar, Item* item) {
   printf("[%s -> ", grammar->strings[item->lhs]);
@@ -170,11 +195,12 @@ static void dump_item(Grammar* grammar, Item* item) {
 static void dump_item_set(Grammar* grammar, ItemSet* set) {
   printf("{\n");
 
-  for (int i = 0; i < MAX_ITEMS_PER_SET; ++i) {
-    Item* item = set->items[i];
-    if (!item) {
+  for (int i = 0; i < set->capacity; ++i) {
+    if (bitset_query(set->bits, i)) {
       continue;
     }
+
+    Item* item = &set->items[i];
 
     printf("  ");
     dump_item(grammar, item);
@@ -233,11 +259,11 @@ static Item* new_item(int lhs, ProductionRHS* rhs, int dot, Symbol lookahead) {
 }
 
 static void populate_item_set_and_stack(ItemSet* set, ItemSet* set_dest, ItemList* stack) {
-  for (int i = 0; i < MAX_ITEMS_PER_SET; ++i) {
-    if (set->items[i]) {
-      item_list_add(stack, set->items[i]);
+  for (int i = 0; i < set->capacity; ++i) {
+    if (bitset_query(set->bits, i)) {
+      item_list_add(stack, &set->items[i]);
       if (set_dest) {
-        item_set_add(set_dest, set->items[i]);
+        item_set_add(set_dest, &set->items[i]);
       }
     }
   }

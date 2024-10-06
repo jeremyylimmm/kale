@@ -179,7 +179,7 @@ int main() {
 
     int i = states[set_index];
 
-    for (Transition* t = cci->transitions; t; t = t->next) {
+    for (Transition* t = cc->transitions[set_index]; t; t = t->next) {
       int j = states[collection_index(cc, t->set)];
 
       if (t->x.kind == SYM_NON_TERMINAL) {
@@ -211,9 +211,11 @@ int main() {
 
     int goal_id = to_id(grammar, "Goal");
 
-    for (int item_idx = 0; item_idx < MAX_ITEMS_PER_SET; ++item_idx) {
-      Item* item = cci->items[item_idx];
-      if (!item || item->dot < item->rhs->num_symbols) { continue; }
+    for (int item_idx = 0; item_idx < cci->capacity; ++item_idx) {
+      if (!bitset_query(cci->bits, item_idx)) { continue; }
+
+      Item* item = &cci->items[item_idx];
+      if (item->dot < item->rhs->num_symbols) { continue; }
 
       Item end_item = {
         .lhs = goal_id,
