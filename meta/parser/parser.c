@@ -527,7 +527,7 @@ static void print_terminal_as_token_kind(FILE* file, Symbol sym) {
 }
 
 static void print_action_entry(FILE* file, ActionEntry* e, char* member, char* fmt, ...) {
-  fprintf(file, "  [STATE_%d][", e->state);
+  fprintf(file, "  [%d][", e->state);
   print_terminal_as_token_kind(file, e->sym);
   fprintf(file, "].%s = ", member);
 
@@ -782,14 +782,8 @@ int main() {
   fprintf(file, "#pragma once\n\n");
   fprintf(file, "#include \"..\\frontend\\frontend.h\"\n\n");
 
-  fprintf(file, "typedef enum {\n");
-
-  for (int i = 0; i < num_states; ++i) {
-    fprintf(file, "  STATE_%d%s,\n", i, i == 0 ? " = 1" : "");
-  }
-
-  fprintf(file, "  NUM_STATES\n");
-  fprintf(file, "} State;\n\n");
+  fprintf(file, "typedef int State;\n\n");
+  fprintf(file, "#define NUM_STATES %d\n\n", num_states);
 
   fprintf(file, "typedef enum {\n");
 
@@ -840,7 +834,7 @@ int main() {
         break;
       case ACT_SHIFT:
         print_action_entry(file, e, "kind", "ACTION_SHIFT");
-        print_action_entry(file, e, "state_or_count", "STATE_%d", e->action.as.shift.state);
+        print_action_entry(file, e, "state_or_count", "%d", e->action.as.shift.state);
         break;
       case ACT_REDUCE:
         print_action_entry(file, e, "kind", "ACTION_REDUCE");
@@ -855,12 +849,12 @@ int main() {
   fprintf(file, "static State goto_table[NUM_STATES][NUM_NON_TERMINALS] = {\n");
 
   for (GotoEntry* e = gotos; e; e = e->next) {
-    fprintf(file, "  [STATE_%d][NON_TERMINAL_%s] = STATE_%d,\n", e->state, grammar->strings[e->nt], e->dest);
+    fprintf(file, "  [%d][NON_TERMINAL_%s] = %d,\n", e->state, grammar->strings[e->nt], e->dest);
   }
 
   fprintf(file, "};\n\n");
 
-  fprintf(file, "static State initial_state = STATE_%d;\n\n", cc->states[collection_index(cc, cc0)]);
+  fprintf(file, "static State initial_state = %d;\n\n", cc->states[collection_index(cc, cc0)]);
 
   fclose(file);
 
