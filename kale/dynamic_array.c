@@ -57,6 +57,10 @@ int _dynamic_array_pop(void* da) {
   return --(header(da)->length);
 }
 
+void dynamic_array_clear(void* da) {
+  header(da)->length = 0;
+}
+
 void* _dynamic_array_bake(Arena* arena, void* da, size_t stride) {
   size_t length = header(da)->length;
   size_t size = length * stride;

@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "frontend.h"
 #include "dynamic_array.h"
 
@@ -42,6 +44,26 @@ typedef struct {
   } as;
 } StackItem;
 
+typedef struct {
+  int depth;
+  Node* node;
+} DumpItem;
+
+static void dump_tree(Node* node, int depth) {
+  printf("%*s%s:\n", depth * 2, "", non_terminal_name[node->kind]);
+
+  for (int i = 0; i < node->num_children; ++i) {
+    Child c = node->children[i];
+
+    if (c.kind == CHILD_NODE) {
+      dump_tree(c.as.node, depth + 1);
+    }
+    else {
+      printf("%*stok: '%.*s'\n", (depth+1) * 2, "", c.as.token.length, c.as.token.start);
+    }
+  }
+}
+
 AST* parse(Arena* arena, TokenizedBuffer tokens) {
   Scratch scratch = global_scratch(1, &arena);
   Allocator* scratch_allocator = new_allocator(scratch.arena);
@@ -73,10 +95,10 @@ AST* parse(Arena* arena, TokenizedBuffer tokens) {
         assert(false && "parsing error!");
         break;
       case ACTION_REDUCE: {
-        int num_children = action.as.reduce.count;
+        int num_children = action.state_or_count;
         Child* children = arena_array(arena, Child, num_children);
 
-        for (int i = 0; i < num_children; ++i) {
+        for (int i = num_children-1; i >= 0; --i) {
           StackItem x0 = dynamic_array_pop(stack);
           StackItem x1 = dynamic_array_pop(stack);
 
@@ -104,7 +126,7 @@ AST* parse(Arena* arena, TokenizedBuffer tokens) {
         Node* node = arena_type(arena, Node);
         node->num_children = num_children;
         node->children = children;
-        node->kind = action.as.reduce.nt;
+        node->kind = action.nt;
 
         State prev_state = TOP_STATE(); 
         State new_state = goto_table[prev_state][node->kind];
@@ -132,7 +154,7 @@ AST* parse(Arena* arena, TokenizedBuffer tokens) {
 
         StackItem state_item = {
           .kind = STACK_ITEM_STATE,
-          .as.state = action.as.shift.state
+          .as.state = action.state_or_count
         };
 
         dynamic_array_put(stack, tok_item);
@@ -144,6 +166,13 @@ AST* parse(Arena* arena, TokenizedBuffer tokens) {
         break;
     }
   }
+
+  assert(dynamic_array_length(stack) == 3);
+
+  StackItem root = stack[1];
+  assert(root.kind == STACK_ITEM_NON_TERMINAL);
+
+  dump_tree(root.as.nt.node, 0);
 
   scratch_release(&scratch);
 

@@ -22,7 +22,7 @@ int main() {
     return 1;
   }
 
-  dump_ast(ast);
+  //dump_ast(ast);
 
   return 0;
 }

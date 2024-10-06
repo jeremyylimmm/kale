@@ -801,6 +801,16 @@ int main() {
   fprintf(file, "  NUM_NON_TERMINALS\n");
   fprintf(file, "} NonTerminal;\n\n");
 
+  fprintf(file, "static char* non_terminal_name[NUM_NON_TERMINALS] = {\n");
+
+  for (int i = 0; i < num_non_terminals; ++i) {
+    int nt = non_terminals[i];
+    char* name = grammar->strings[nt]; 
+    fprintf(file, "  [NON_TERMINAL_%s] = \"%s\",\n", name, name);
+  }
+
+  fprintf(file, "};\n\n");
+
   char* action_defs = (
     "typedef enum {\n"
     "  ACTION_ACCEPT = 1,\n"
@@ -810,10 +820,8 @@ int main() {
     "\n"
     "typedef struct {\n"
     "  ActionKind kind;\n"
-    "  union {\n"
-    "    struct { State state; } shift;\n"
-    "    struct { int count; NonTerminal nt; } reduce;\n"
-    "  } as;\n"
+    "  int state_or_count;\n"
+    "  NonTerminal nt;\n"
     "} Action;\n"
     "\n"
   );
@@ -832,12 +840,12 @@ int main() {
         break;
       case ACT_SHIFT:
         print_action_entry(file, e, "kind", "ACTION_SHIFT");
-        print_action_entry(file, e, "as.shift.state", "STATE_%d", e->action.as.shift.state);
+        print_action_entry(file, e, "state_or_count", "STATE_%d", e->action.as.shift.state);
         break;
       case ACT_REDUCE:
         print_action_entry(file, e, "kind", "ACTION_REDUCE");
-        print_action_entry(file, e, "as.reduce.count", "%d", e->action.as.reduce.count);
-        print_action_entry(file, e, "as.reduce.nt", "NON_TERMINAL_%s", grammar->strings[e->action.as.reduce.nt]);
+        print_action_entry(file, e, "state_or_count", "%d", e->action.as.reduce.count);
+        print_action_entry(file, e, "nt", "NON_TERMINAL_%s", grammar->strings[e->action.as.reduce.nt]);
         break;
     }
   }
