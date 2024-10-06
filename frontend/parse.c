@@ -129,7 +129,9 @@ AST* parse(Arena* arena, TokenizedBuffer tokens) {
         node->kind = action.nt;
 
         State prev_state = TOP_STATE(); 
+
         State new_state = goto_table[prev_state][node->kind];
+        assert(new_state && "parser error!");
 
         StackItem nt_item = {
           .kind = STACK_ITEM_NON_TERMINAL,

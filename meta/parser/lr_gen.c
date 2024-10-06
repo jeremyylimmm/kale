@@ -5,7 +5,7 @@
 #include <stdarg.h>
 
 #include "grammar.h"
-#include "common.h"
+#include "../common.h"
 
 #define MAX_ITEMS_PER_SET 1024
 #define MAX_SYMBOLS_PER_FIRST 128
@@ -43,13 +43,11 @@ typedef struct {
 
 typedef struct {
   ItemSet* sets[COLLECTION_CAPACITY];
-  int states[COLLECTION_CAPACITY];
 } Collection;
 
 typedef struct {
   uint64_t bits[(SYMBOL_SET_CAPACITY + 63)/64];
   Symbol symbols[SYMBOL_SET_CAPACITY];
-  int column[SYMBOL_SET_CAPACITY];
 } SymbolSet;
 
 typedef struct {
@@ -640,21 +638,23 @@ int main() {
 
   // Write the parser
 
-  int num_states = 0;
+  int num_states = 1;
+  int states[COLLECTION_CAPACITY];
 
   for (int i = 0; i < COLLECTION_CAPACITY; ++i) {
     if (!cc->sets[i]) { continue; }
-    cc->states[i] = num_states++;
+    states[i] = num_states++;
   }
 
   int num_terminals = 0;
+  int terminal_column[SYMBOL_SET_CAPACITY];
 
   for (int i = 0; i < SYMBOL_SET_CAPACITY; ++i) {
     if (!symbol_set_check(terminals, i)) {
       continue;
     }
 
-    terminals->column[i] = num_terminals++;
+    terminal_column[i] = num_terminals++;
   }
 
   int num_non_terminals = 0;
@@ -688,7 +688,7 @@ int main() {
 
   #define CHECK_ACTION(state, term)\
     do {\
-      int col = terminals->column[symbol_set_get_index(terminals, term)]; \
+      int col = terminal_column[symbol_set_get_index(terminals, term)]; \
       \
       if (bitmatrix_query(action_table, state, col)) { \
         fprintf(stderr, "Ambiguous grammar.\n"); \
@@ -702,10 +702,10 @@ int main() {
     ItemSet* cci = cc->sets[set_index];
     if (!cci) { continue; }
 
-    int i = cc->states[set_index];
+    int i = states[set_index];
 
     for (Transition* t = cci->transitions; t; t = t->next) {
-      int j = cc->states[collection_index(cc, t->set)];
+      int j = states[collection_index(cc, t->set)];
 
       if (t->x.kind == SYM_NON_TERMINAL) {
         CHECK_GOTO(i, t->x.as.non_terminal);
@@ -854,7 +854,7 @@ int main() {
 
   fprintf(file, "};\n\n");
 
-  fprintf(file, "static State initial_state = %d;\n\n", cc->states[collection_index(cc, cc0)]);
+  fprintf(file, "static State initial_state = %d;\n\n", states[collection_index(cc, cc0)]);
 
   fclose(file);
 
