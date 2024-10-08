@@ -1,6 +1,6 @@
 #pragma once
 
-#include "base.h"
+#include "utils.h"
 
 typedef struct {
   char* contents;
@@ -22,8 +22,6 @@ typedef struct {
   int line;
   char* start;
 } Token;
-
-Scratch global_scratch(int num_conflicts, Arena** conflicts);
 
 SourceContents load_source(Arena* arena, char* path);
 

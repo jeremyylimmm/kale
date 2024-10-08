@@ -18,4 +18,4 @@ add_library(kale STATIC ${KALE_SOURCES})
 add_executable(frontend ${FRONTEND_SOURCES})
 
 target_link_libraries(frontend PRIVATE kale)
-target_include_directories(frontend PRIVATE "kale")
+target_include_directories(frontend PRIVATE "kale" "frontend")
