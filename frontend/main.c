@@ -16,13 +16,7 @@ int main() {
 
   SourceContents source = load_source(arena, "examples/test.kale");
   TokenizedBuffer tokens = tokenize(arena, source);
-
-  AST* ast = parse(arena, tokens);
-  if (!ast) {
-    return 1;
-  }
-
-  //dump_ast(ast);
+  (void)tokens;
 
   return 0;
 }
