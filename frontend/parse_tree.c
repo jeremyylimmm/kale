@@ -76,16 +76,17 @@ void dump_parse_tree(ParseTree tree) {
     print_indentation(item.last_child, item.depth);
     printf("%s: '%.*s'\n", parse_node_debug_name[node->kind], node->token.length, node->token.start);
 
-    static_assert(NUM_PARSE_NODE_KINDS == 12, "handle all parse tree dump");
+    static_assert(NUM_PARSE_NODE_KINDS == 14, "handle all parse tree dump");
     switch (node->kind) {
       default:
         assert(false);
         break;
       case PARSE_NODE_INTEGER_LITERAL:
       case PARSE_NODE_BLOCK_OPEN:
+      case PARSE_NODE_IDENTIFIER:
         break;
-      case PARSE_NODE_EXPR_STATEMENT:
-        CHILD(node->as.expr_stmt.expr, true);
+      case PARSE_NODE_SEMICOLON_STATEMENT:
+        CHILD(node->as.semi_stmt.child, true);
         break;
       case PARSE_NODE_BLOCK:
         for (ParseNode* n = node->as.block.tail_stmt; n; n = n->prev) {
@@ -105,6 +106,9 @@ void dump_parse_tree(ParseTree tree) {
         CHILD(node->as.else_.second, true);
         CHILD(node->as.else_.first, false);
         break;
+      case PARSE_NODE_LOCAL_DECL:
+        CHILD(node->as.local_decl.type, true);
+        CHILD(node->as.local_decl.name, false);
         break;
       case PARSE_NODE_ADD:
       case PARSE_NODE_SUB:

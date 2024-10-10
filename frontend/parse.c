@@ -15,7 +15,7 @@ typedef struct {
     struct { int prec; } binary;
     struct { int prec; } binary_infix;
     struct { Token op; int prec; } binary_accept;
-    struct { bool is_expr; } block_stmt_accept;
+    struct { bool require_semicolon; } block_stmt_accept;
     struct { Token if_token; } if_accept;
     struct { Token else_token; } else_accept;
     struct { Token while_token; } while_accept;
@@ -254,13 +254,23 @@ static bool handle_BLOCK_STMT(Context* context, ParseState state) {
     return true;
   }
 
-  bool is_expr = false;
+  bool require_semicolon = false;
   ParseState stmt_state = {0};
 
   switch (peek(context).kind) {
     default:
-      is_expr = true;
+      require_semicolon = true;
       stmt_state = (ParseState) { .kind = STATE_EXPR };
+      break;
+
+    case TOKEN_IDENTIFIER:
+      require_semicolon = true;
+      if (peekn(context, 1).kind == ':') {
+        stmt_state = (ParseState) { .kind = STATE_LOCAL_DECL };
+      }
+      else {
+        stmt_state = (ParseState) { .kind = STATE_EXPR };
+      }
       break;
 
     case '{':
@@ -278,7 +288,7 @@ static bool handle_BLOCK_STMT(Context* context, ParseState state) {
 
   push_state(context, (ParseState) {
     .kind = STATE_BLOCK_STMT_ACCEPT,
-    .as.block_stmt_accept.is_expr = is_expr
+    .as.block_stmt_accept.require_semicolon = require_semicolon
   });
 
   push_state(context, stmt_state);
@@ -289,12 +299,12 @@ static bool handle_BLOCK_STMT(Context* context, ParseState state) {
 static bool handle_BLOCK_STMT_ACCEPT(Context* context, ParseState state) {
   (void)state;
 
-  if (state.as.block_stmt_accept.is_expr) {
+  if (state.as.block_stmt_accept.require_semicolon) {
     Token semi = peek(context);
     REQUIRE(context, ';', "expected a semi-colon ';'");
 
-    ParseNode* stmt = new_node(context, PARSE_NODE_EXPR_STATEMENT, semi);
-    stmt->as.expr_stmt.expr = pop_node(context);
+    ParseNode* stmt = new_node(context, PARSE_NODE_SEMICOLON_STATEMENT, semi);
+    stmt->as.semi_stmt.child = pop_node(context);
 
     push_node(context, stmt);
   }
@@ -401,6 +411,27 @@ static bool handle_WHILE_ACCEPT(Context* context, ParseState state) {
   ParseNode* node = new_node(context, PARSE_NODE_WHILE, while_token);
   node->as.while_.predicate = predicate;
   node->as.while_.body = body;
+
+  push_node(context, node);
+
+  return true;
+}
+
+static bool handle_LOCAL_DECL(Context* context, ParseState state) {
+  (void)state;
+
+  ParseNode* name = new_node(context, PARSE_NODE_IDENTIFIER, peek(context));
+  REQUIRE(context, TOKEN_IDENTIFIER, "expected a local declaration");
+
+  Token colon = peek(context);
+  REQUIRE(context, ':', "expected a local declaration");
+
+  ParseNode* type = new_node(context, PARSE_NODE_IDENTIFIER, peek(context));
+  REQUIRE(context, TOKEN_IDENTIFIER, "expected a type name");
+
+  ParseNode* node = new_node(context, PARSE_NODE_LOCAL_DECL, colon);
+  node->as.local_decl.name = name; 
+  node->as.local_decl.type = type; 
 
   push_node(context, node);
 

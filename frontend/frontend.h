@@ -56,7 +56,7 @@ struct ParseNode {
   union {
     struct { ParseNode* lhs; ParseNode* rhs; } bin;
     struct { ParseNode* open; ParseNode* tail_stmt; } block;
-    struct { ParseNode* expr; } expr_stmt;
+    struct { ParseNode* child; } semi_stmt;
     struct {
       ParseNode* predicate;
       ParseNode* body;
@@ -69,6 +69,10 @@ struct ParseNode {
       ParseNode* first;
       ParseNode* second;
     } else_;
+    struct {
+      ParseNode* name;
+      ParseNode* type;
+    } local_decl;
   } as;
 };
 

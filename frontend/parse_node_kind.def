@@ -9,9 +9,12 @@ X(DIV, "div")
 X(BLOCK_OPEN, "block_open")
 X(BLOCK, "block")
 
-X(EXPR_STATEMENT, "expr_stmt")
+X(SEMICOLON_STATEMENT, "semi_stmt")
 
 X(IF, "if")
 X(ELSE, "else")
 
 X(WHILE, "while")
+
+X(LOCAL_DECL, "local_decl")
+X(IDENTIFIER, "identifier")
