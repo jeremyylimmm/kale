@@ -45,11 +45,14 @@ static char* parse_node_debug_name[NUM_PARSE_NODE_KINDS] = {
 
 typedef struct ParseNode ParseNode;
 struct ParseNode {
+  ParseNode* prev;
   ParseNodeKind kind;
   Token token;
 
   union {
     struct { ParseNode* lhs; ParseNode* rhs; } bin;
+    struct { ParseNode* open; ParseNode* tail_stmt; } block;
+    struct { ParseNode* expr; } expr_stmt;
   } as;
 };
 

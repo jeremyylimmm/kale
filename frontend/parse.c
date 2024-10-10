@@ -9,12 +9,19 @@ typedef enum {
 } ParseStateKind;
 #undef X
 
+typedef enum {
+  BLOCK_STMT_INVALID,
+  BLOCK_STMT_BLOCK,
+  BLOCK_STMT_EXPR
+} BlockStmtKind;
+
 typedef struct {
   ParseStateKind kind;
   union {
     struct { int prec; } binary_begin;
     struct { int prec; } binary_infix;
     struct { Token op; int prec; } binary_accept;
+    struct { BlockStmtKind stmt_kind; } block_stmt_accept;
   } as;
 } ParseState;
 
@@ -78,6 +85,23 @@ static ParseNode* new_node(Context* context, ParseNodeKind kind, Token token) {
   node->token = token;
   return node;
 }
+
+static bool match(Context* context, int kind, char* message) {
+  if (peek(context).kind != kind) {
+    error_at_token(context->source.path, context->source.contents, peek(context), message);
+    return false;
+  }
+
+  lex(context);
+  return true;
+}
+
+#define REQUIRE(context, kind, message) \
+  do { \
+    if (!match(context, kind, message)) { \
+      return false; \
+    } \
+  } while (false)
 
 static bool handle_PRIMARY(Context* context, ParseState state) {
   (void)state;
@@ -185,6 +209,106 @@ static bool handle_EXPR(Context* context, ParseState state) {
   return true;
 }
 
+static bool handle_BLOCK_BEGIN(Context* context, ParseState state) {
+  (void)state;
+
+  Token token = peek(context);
+  REQUIRE(context, '{', "expected a block '{'");
+
+  ParseNode* open = new_node(context, PARSE_NODE_BLOCK_OPEN, token);
+  push_node(context, open);
+
+  push_state(context, (ParseState) {
+    .kind = STATE_BLOCK_STMT_BEGIN
+  });
+
+  return true;
+}
+
+static void close_block(Context* context) {
+  ParseNode* open = NULL;
+
+  ParseNode tail = {0};
+  ParseNode* cur = &tail;
+
+  while (!open) {
+    ParseNode* node = pop_node(context);
+    
+    if (node->kind == PARSE_NODE_BLOCK_OPEN) {
+      open = node;
+    }
+    else {
+      cur = cur->prev = node;
+    }
+  }
+
+  ParseNode* block = new_node(context, PARSE_NODE_BLOCK, lex(context));
+  block->as.block.open = open;
+  block->as.block.tail_stmt = tail.prev;
+
+  push_node(context, block);
+}
+
+static bool handle_BLOCK_STMT_BEGIN(Context* context, ParseState state) {
+  (void)state;
+
+  if (peek(context).kind == '}') {
+    close_block(context);
+    return true;
+  }
+
+  BlockStmtKind stmt_kind = BLOCK_STMT_INVALID;
+  ParseState stmt_state = {0};
+
+  switch (peek(context).kind) {
+    default:
+      stmt_kind = BLOCK_STMT_EXPR;
+      stmt_state = (ParseState) { .kind = STATE_EXPR };
+      break;
+
+    case '{':
+      stmt_kind = BLOCK_STMT_BLOCK;
+      stmt_state = (ParseState) { .kind = STATE_BLOCK_BEGIN };
+  }
+
+  push_state(context, (ParseState) {
+    .kind = STATE_BLOCK_STMT_ACCEPT,
+    .as.block_stmt_accept.stmt_kind = stmt_kind
+  });
+
+  push_state(context, stmt_state);
+
+  return true;
+}
+
+static bool handle_BLOCK_STMT_ACCEPT(Context* context, ParseState state) {
+  (void)state;
+
+  switch (state.as.block_stmt_accept.stmt_kind) {
+    default:
+      assert(false);
+      return false;
+
+    case BLOCK_STMT_EXPR: {
+      Token semi = peek(context);
+      REQUIRE(context, ';', "expected a semi-colon ';'");
+
+      ParseNode* stmt = new_node(context, PARSE_NODE_EXPR_STATEMENT, semi);
+      stmt->as.expr_stmt.expr = pop_node(context);
+
+      push_node(context, stmt);
+    } break;
+
+    case BLOCK_STMT_BLOCK: {
+      // Leave the block on the stack
+    } break;
+  }
+
+  push_state(context, (ParseState){ .kind = STATE_BLOCK_STMT_BEGIN });
+
+  return true;
+}
+
 #define X(name, ...) [STATE_##name] = handle_##name,
 static HandleStateFunc handle_func_table[NUM_STATES] = {
   #include "parse_state.def"
@@ -206,7 +330,7 @@ bool parse(Arena* arena, SourceContents source, TokenizedBuffer tokens, ParseTre
     .node_capacity = tokens.length-1
   };
 
-  push_state(&context, (ParseState){.kind = STATE_EXPR});
+  push_state(&context, (ParseState){.kind = STATE_BLOCK_BEGIN});
 
   while (dynamic_array_length(context.state_stack)) {
     ParseState state = dynamic_array_pop(context.state_stack);
