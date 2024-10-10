@@ -12,7 +12,7 @@ typedef enum {
 typedef struct {
   ParseStateKind kind;
   union {
-    struct { int prec; } binary_begin;
+    struct { int prec; } binary;
     struct { int prec; } binary_infix;
     struct { Token op; int prec; } binary_accept;
     struct { bool is_expr; } block_stmt_accept;
@@ -116,10 +116,10 @@ static bool handle_PRIMARY(Context* context, ParseState state) {
   }
 }
 
-static bool handle_BINARY_BEGIN(Context* context, ParseState state) {
+static bool handle_BINARY(Context* context, ParseState state) {
   push_state(context, (ParseState) {
     .kind = STATE_BINARY_INFIX,
-    .as.binary_infix.prec = state.as.binary_begin.prec
+    .as.binary_infix.prec = state.as.binary.prec
   });
 
   push_state(context, (ParseState) { .kind = STATE_PRIMARY });
@@ -167,8 +167,8 @@ static bool handle_BINARY_INFIX(Context* context, ParseState state) {
     });
 
     push_state(context, (ParseState){
-      .kind = STATE_BINARY_BEGIN,
-      .as.binary_begin.prec = binary_prec(op)
+      .kind = STATE_BINARY,
+      .as.binary.prec = binary_prec(op)
     });
   }
 
@@ -199,14 +199,14 @@ static bool handle_EXPR(Context* context, ParseState state) {
   (void)state;
 
   push_state(context, (ParseState){
-    .kind = STATE_BINARY_BEGIN,
-    .as.binary_begin.prec = 0
+    .kind = STATE_BINARY,
+    .as.binary.prec = 0
   });
 
   return true;
 }
 
-static bool handle_BLOCK_BEGIN(Context* context, ParseState state) {
+static bool handle_BLOCK(Context* context, ParseState state) {
   (void)state;
 
   Token token = peek(context);
@@ -216,7 +216,7 @@ static bool handle_BLOCK_BEGIN(Context* context, ParseState state) {
   push_node(context, open);
 
   push_state(context, (ParseState) {
-    .kind = STATE_BLOCK_STMT_BEGIN
+    .kind = STATE_BLOCK_STMT
   });
 
   return true;
@@ -246,7 +246,7 @@ static void close_block(Context* context) {
   push_node(context, block);
 }
 
-static bool handle_BLOCK_STMT_BEGIN(Context* context, ParseState state) {
+static bool handle_BLOCK_STMT(Context* context, ParseState state) {
   (void)state;
 
   if (peek(context).kind == '}') {
@@ -264,15 +264,15 @@ static bool handle_BLOCK_STMT_BEGIN(Context* context, ParseState state) {
       break;
 
     case '{':
-      stmt_state = (ParseState) { .kind = STATE_BLOCK_BEGIN };
+      stmt_state = (ParseState) { .kind = STATE_BLOCK};
       break;
     
     case TOKEN_KEYWORD_IF:
-      stmt_state = (ParseState) { .kind = STATE_IF_BEGIN };
+      stmt_state = (ParseState) { .kind = STATE_IF};
       break;
 
     case TOKEN_KEYWORD_WHILE:
-      stmt_state = (ParseState) { .kind = STATE_WHILE_BEGIN };
+      stmt_state = (ParseState) { .kind = STATE_WHILE};
       break;
   }
 
@@ -299,12 +299,12 @@ static bool handle_BLOCK_STMT_ACCEPT(Context* context, ParseState state) {
     push_node(context, stmt);
   }
 
-  push_state(context, (ParseState){ .kind = STATE_BLOCK_STMT_BEGIN });
+  push_state(context, (ParseState){ .kind = STATE_BLOCK_STMT});
 
   return true;
 }
 
-static bool handle_IF_BEGIN(Context* context, ParseState state) {
+static bool handle_IF(Context* context, ParseState state) {
   (void)state;
 
   Token token = peek(context);
@@ -316,14 +316,14 @@ static bool handle_IF_BEGIN(Context* context, ParseState state) {
     .as.if_accept.if_token = token
   });
 
-  push_state(context, (ParseState){.kind=STATE_ELSE_BEGIN});
-  push_state(context, (ParseState){.kind=STATE_BLOCK_BEGIN});
+  push_state(context, (ParseState){.kind=STATE_ELSE});
+  push_state(context, (ParseState){.kind=STATE_BLOCK});
   push_state(context, (ParseState){.kind=STATE_EXPR});
 
   return true;
 }
 
-static bool handle_ELSE_BEGIN(Context* context, ParseState state) {
+static bool handle_ELSE(Context* context, ParseState state) {
   (void)state;
 
   if (peek(context).kind == TOKEN_KEYWORD_ELSE) {
@@ -335,10 +335,10 @@ static bool handle_ELSE_BEGIN(Context* context, ParseState state) {
     });
 
     if (peek(context).kind == TOKEN_KEYWORD_IF) {
-      push_state(context, (ParseState){.kind=STATE_IF_BEGIN});
+      push_state(context, (ParseState){.kind=STATE_IF});
     }
     else {
-      push_state(context, (ParseState){.kind=STATE_BLOCK_BEGIN});
+      push_state(context, (ParseState){.kind=STATE_BLOCK});
     }
   }
 
@@ -375,7 +375,7 @@ static bool handle_IF_ACCEPT(Context* context, ParseState state) {
   return true;
 }
 
-static bool handle_WHILE_BEGIN(Context* context, ParseState state) {
+static bool handle_WHILE(Context* context, ParseState state) {
   (void)state;
 
   Token token = peek(context);
@@ -386,7 +386,7 @@ static bool handle_WHILE_BEGIN(Context* context, ParseState state) {
     .as.while_accept.while_token = token
   });
 
-  push_state(context, (ParseState) {.kind=STATE_BLOCK_BEGIN});
+  push_state(context, (ParseState) {.kind=STATE_BLOCK});
   push_state(context, (ParseState) {.kind=STATE_EXPR});
 
   return true;
@@ -428,7 +428,7 @@ bool parse(Arena* arena, SourceContents source, TokenizedBuffer tokens, ParseTre
     .node_capacity = tokens.length-1
   };
 
-  push_state(&context, (ParseState){.kind = STATE_BLOCK_BEGIN});
+  push_state(&context, (ParseState){.kind = STATE_BLOCK});
 
   while (dynamic_array_length(context.state_stack)) {
     ParseState state = dynamic_array_pop(context.state_stack);
