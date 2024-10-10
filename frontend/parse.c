@@ -324,22 +324,17 @@ static bool handle_ELSE_BEGIN(Context* context, ParseState state) {
   if (peek(context).kind == TOKEN_KEYWORD_ELSE) {
     Token else_token = lex(context);                        
 
-    ParseState body_state = {0};
-
-    if (peek(context).kind == TOKEN_KEYWORD_IF) {
-      push_state(context, (ParseState){.kind=STATE_ELSE_BEGIN});
-      body_state = (ParseState){.kind=STATE_IF_BEGIN};
-    }
-    else {
-      body_state = (ParseState){.kind=STATE_BLOCK_BEGIN};
-    }
-
     push_state(context, (ParseState){
       .kind=STATE_ELSE_ACCEPT,
       .as.else_accept.else_token = else_token
     });
 
-    push_state(context, body_state);
+    if (peek(context).kind == TOKEN_KEYWORD_IF) {
+      push_state(context, (ParseState){.kind=STATE_IF_BEGIN});
+    }
+    else {
+      push_state(context, (ParseState){.kind=STATE_BLOCK_BEGIN});
+    }
   }
 
   return true;
