@@ -76,7 +76,7 @@ void dump_parse_tree(ParseTree tree) {
     print_indentation(item.last_child, item.depth);
     printf("%s: '%.*s'\n", parse_node_debug_name[node->kind], node->token.length, node->token.start);
 
-    static_assert(NUM_PARSE_NODE_KINDS == 6, "handle all ast dump");
+    static_assert(NUM_PARSE_NODE_KINDS == 6, "handle all parse tree dump");
     switch (node->kind) {
       default:
         assert(false);
