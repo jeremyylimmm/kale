@@ -14,9 +14,16 @@ int main() {
 
   Arena* arena = new_arena();
 
-  SourceContents source = load_source(arena, "examples/test.kale");
+  char* source_path = "examples/test.kale";
+  SourceContents source = load_source(arena, source_path);
   TokenizedBuffer tokens = tokenize(arena, source);
-  (void)tokens;
+
+  ParseTree parse_tree;
+  if (!parse(arena, source_path, tokens, &parse_tree)) {
+    return 1;
+  }
+
+  dump_parse_tree(parse_tree);
 
   return 0;
 }

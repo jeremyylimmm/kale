@@ -33,3 +33,19 @@ inline String copy_cstr(Arena* arena, char* str) {
     .str = buffer
   };
 }
+
+inline size_t bitset_num_u64(size_t num_bits) {
+  return (num_bits + 63) / 64;
+}
+
+inline bool bitset_query(uint64_t* set, size_t index) {
+  return (set[index/64] >> (index%64)) & 1;
+} 
+
+inline void bitset_set(uint64_t* set, size_t index) {
+  set[index/64] |= (uint64_t)1 << (index % 64);
+}
+
+inline void bitset_unset(uint64_t* set, size_t index) {
+  set[index/64] &= ~((uint64_t)1 << (index % 64));
+}
