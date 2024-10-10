@@ -62,6 +62,8 @@ SourceContents load_source(Arena* arena, char* path);
 
 TokenizedBuffer tokenize(Arena* arena, SourceContents source);
 
-bool parse(Arena* arena, char* source_path, TokenizedBuffer tokens, ParseTree* out_parse_tree);
+bool parse(Arena* arena, SourceContents source, TokenizedBuffer tokens, ParseTree* out_parse_tree);
 
 void dump_parse_tree(ParseTree tree);
+
+void error_at_token(char* source_path, char* source, Token token, char* fmt, ...);

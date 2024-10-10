@@ -19,7 +19,7 @@ typedef struct {
 } ParseState;
 
 typedef struct {
-  char* source_path;
+  SourceContents source;
 
   DynamicArray(ParseState) state_stack;
   DynamicArray(int) node_stack;
@@ -84,7 +84,7 @@ static bool handle_PRIMARY(Context* context, ParseState state) {
 
   switch (peek(context).kind) {
     default:
-      assert("parsing error" && false);
+      error_at_token(context->source.path, context->source.contents, peek(context), "expected an expression");
       return false;
 
     case TOKEN_INTEGER_LITERAL: {
@@ -191,14 +191,14 @@ static HandleStateFunc handle_func_table[NUM_STATES] = {
 };
 #undef X
 
-bool parse(Arena* arena, char* source_path, TokenizedBuffer tokens, ParseTree* out_parse_tree) {
+bool parse(Arena* arena, SourceContents source, TokenizedBuffer tokens, ParseTree* out_parse_tree) {
   Scratch scratch = global_scratch(1, &arena);
   Allocator* scratch_allocator = new_allocator(scratch.arena);
 
   bool return_value = false;
 
   Context context = {
-    .source_path = source_path,
+    .source = source,
     .state_stack = new_dynamic_array(scratch_allocator),
     .node_stack = new_dynamic_array(scratch_allocator),
     .tokens = tokens,

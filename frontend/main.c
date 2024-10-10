@@ -19,7 +19,7 @@ int main() {
   TokenizedBuffer tokens = tokenize(arena, source);
 
   ParseTree parse_tree;
-  if (!parse(arena, source_path, tokens, &parse_tree)) {
+  if (!parse(arena, source, tokens, &parse_tree)) {
     return 1;
   }
 
