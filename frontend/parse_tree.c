@@ -67,7 +67,7 @@ void dump_parse_tree(ParseTree tree) {
   ParseNode* root = &tree.nodes[tree.num_nodes-1];
   dynamic_array_put(stack, make_item(scratch_allocator, tree_count, NULL, 0, root, true));
 
-  #define CHILD(x, is_last_child) dynamic_array_put(stack, make_item(scratch_allocator, tree_count, item.last_child, item.depth + 1, &tree.nodes[x], is_last_child))
+  #define CHILD(x, is_last_child) dynamic_array_put(stack, make_item(scratch_allocator, tree_count, item.last_child, item.depth + 1, x, is_last_child))
 
   while (dynamic_array_length(stack)) {
     Item item = dynamic_array_pop(stack);

@@ -49,7 +49,7 @@ struct ParseNode {
   Token token;
 
   union {
-    struct { int lhs; int rhs; } bin;
+    struct { ParseNode* lhs; ParseNode* rhs; } bin;
   } as;
 };
 

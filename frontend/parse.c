@@ -43,8 +43,8 @@ static void push_node(Context* context, ParseNode* node) {
   dynamic_array_put(context->node_stack, index);
 }
 
-static int pop_node(Context* context) {
-  return dynamic_array_pop(context->node_stack);
+static ParseNode* pop_node(Context* context) {
+  return &context->nodes[dynamic_array_pop(context->node_stack)];
 }
 
 static Token peekn(Context* context, int n) {
@@ -155,8 +155,8 @@ static bool handle_BINARY_INFIX(Context* context, ParseState state) {
 }
 
 static bool handle_BINARY_ACCEPT(Context* context, ParseState state) {
-  int rhs = pop_node(context);
-  int lhs = pop_node(context);
+  ParseNode* rhs = pop_node(context);
+  ParseNode* lhs = pop_node(context);
 
   Token op = state.as.binary_accept.op;
 
