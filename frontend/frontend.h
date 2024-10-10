@@ -13,6 +13,10 @@ enum {
   TOKEN_IDENTIFIER = 256,
   TOKEN_INTEGER_LITERAL,
 
+  TOKEN_KEYWORD_IF,
+  TOKEN_KEYWORD_ELSE,
+  TOKEN_KEYWORD_WHILE,
+
   NUM_TOKEN_KINDS
 };
 
@@ -53,6 +57,14 @@ struct ParseNode {
     struct { ParseNode* lhs; ParseNode* rhs; } bin;
     struct { ParseNode* open; ParseNode* tail_stmt; } block;
     struct { ParseNode* expr; } expr_stmt;
+    struct {
+      ParseNode* predicate;
+      ParseNode* body;
+     } if_;
+     struct {
+      ParseNode* first;
+      ParseNode* second;
+     } else_;
   } as;
 };
 

@@ -9,19 +9,15 @@ typedef enum {
 } ParseStateKind;
 #undef X
 
-typedef enum {
-  BLOCK_STMT_INVALID,
-  BLOCK_STMT_BLOCK,
-  BLOCK_STMT_EXPR
-} BlockStmtKind;
-
 typedef struct {
   ParseStateKind kind;
   union {
     struct { int prec; } binary_begin;
     struct { int prec; } binary_infix;
     struct { Token op; int prec; } binary_accept;
-    struct { BlockStmtKind stmt_kind; } block_stmt_accept;
+    struct { bool is_expr; } block_stmt_accept;
+    struct { Token if_token; } if_accept;
+    struct { Token else_token; } else_accept;
   } as;
 } ParseState;
 
@@ -257,23 +253,27 @@ static bool handle_BLOCK_STMT_BEGIN(Context* context, ParseState state) {
     return true;
   }
 
-  BlockStmtKind stmt_kind = BLOCK_STMT_INVALID;
+  bool is_expr = false;
   ParseState stmt_state = {0};
 
   switch (peek(context).kind) {
     default:
-      stmt_kind = BLOCK_STMT_EXPR;
+      is_expr = true;
       stmt_state = (ParseState) { .kind = STATE_EXPR };
       break;
 
     case '{':
-      stmt_kind = BLOCK_STMT_BLOCK;
       stmt_state = (ParseState) { .kind = STATE_BLOCK_BEGIN };
+      break;
+    
+    case TOKEN_KEYWORD_IF:
+      stmt_state = (ParseState) { .kind = STATE_IF_BEGIN };
+      break;
   }
 
   push_state(context, (ParseState) {
     .kind = STATE_BLOCK_STMT_ACCEPT,
-    .as.block_stmt_accept.stmt_kind = stmt_kind
+    .as.block_stmt_accept.is_expr = is_expr
   });
 
   push_state(context, stmt_state);
@@ -284,27 +284,93 @@ static bool handle_BLOCK_STMT_BEGIN(Context* context, ParseState state) {
 static bool handle_BLOCK_STMT_ACCEPT(Context* context, ParseState state) {
   (void)state;
 
-  switch (state.as.block_stmt_accept.stmt_kind) {
-    default:
-      assert(false);
-      return false;
+  if (state.as.block_stmt_accept.is_expr) {
+    Token semi = peek(context);
+    REQUIRE(context, ';', "expected a semi-colon ';'");
 
-    case BLOCK_STMT_EXPR: {
-      Token semi = peek(context);
-      REQUIRE(context, ';', "expected a semi-colon ';'");
+    ParseNode* stmt = new_node(context, PARSE_NODE_EXPR_STATEMENT, semi);
+    stmt->as.expr_stmt.expr = pop_node(context);
 
-      ParseNode* stmt = new_node(context, PARSE_NODE_EXPR_STATEMENT, semi);
-      stmt->as.expr_stmt.expr = pop_node(context);
-
-      push_node(context, stmt);
-    } break;
-
-    case BLOCK_STMT_BLOCK: {
-      // Leave the block on the stack
-    } break;
+    push_node(context, stmt);
   }
 
   push_state(context, (ParseState){ .kind = STATE_BLOCK_STMT_BEGIN });
+
+  return true;
+}
+
+static bool handle_IF_BEGIN(Context* context, ParseState state) {
+  (void)state;
+
+  Token token = peek(context);
+  REQUIRE(context, TOKEN_KEYWORD_IF, "expected 'if' statement");
+
+
+  push_state(context, (ParseState){
+    .kind=STATE_IF_ACCEPT,
+    .as.if_accept.if_token = token
+  });
+
+  push_state(context, (ParseState){.kind=STATE_ELSE_BEGIN});
+  push_state(context, (ParseState){.kind=STATE_BLOCK_BEGIN});
+  push_state(context, (ParseState){.kind=STATE_EXPR});
+
+  return true;
+}
+
+static bool handle_ELSE_BEGIN(Context* context, ParseState state) {
+  (void)state;
+
+  if (peek(context).kind == TOKEN_KEYWORD_ELSE) {
+    Token else_token = lex(context);                        
+
+    ParseState body_state = {0};
+
+    if (peek(context).kind == TOKEN_KEYWORD_IF) {
+      push_state(context, (ParseState){.kind=STATE_ELSE_BEGIN});
+      body_state = (ParseState){.kind=STATE_IF_BEGIN};
+    }
+    else {
+      body_state = (ParseState){.kind=STATE_BLOCK_BEGIN};
+    }
+
+    push_state(context, (ParseState){
+      .kind=STATE_ELSE_ACCEPT,
+      .as.else_accept.else_token = else_token
+    });
+
+    push_state(context, body_state);
+  }
+
+  return true;
+}
+
+static bool handle_ELSE_ACCEPT(Context* context, ParseState state) {
+  Token token = state.as.else_accept.else_token;
+
+  ParseNode* else_block = pop_node(context);
+  ParseNode* then_block = pop_node(context);
+
+  ParseNode* node = new_node(context, PARSE_NODE_ELSE, token);
+  node->as.else_.first = then_block;
+  node->as.else_.second = else_block;
+
+  push_node(context, node);
+
+  return true;
+}
+
+static bool handle_IF_ACCEPT(Context* context, ParseState state) {
+  Token token = state.as.if_accept.if_token;
+
+  ParseNode* body = pop_node(context);
+  ParseNode* predicate = pop_node(context);
+
+  ParseNode* node = new_node(context, PARSE_NODE_IF, token);
+  node->as.if_.predicate = predicate;
+  node->as.if_.body = body;
+
+  push_node(context, node);
 
   return true;
 }

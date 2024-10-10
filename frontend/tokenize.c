@@ -3,6 +3,28 @@
 #include "frontend.h"
 #include "dynamic_array.h"
 
+static int check_keyword(char* start, char* end, char* keyword, int kind) {
+  size_t length = end-start;
+  if (length == strlen(keyword) && memcmp(start, keyword, length) == 0) {
+    return kind;
+  }
+  
+  return TOKEN_IDENTIFIER;
+}
+
+static int identifier_kind(char* start, char* end) {
+  switch (start[0]) {
+    default:
+      return TOKEN_IDENTIFIER;
+    case 'i':
+      return check_keyword(start, end, "if", TOKEN_KEYWORD_IF);
+    case 'e':
+      return check_keyword(start, end, "else", TOKEN_KEYWORD_ELSE);
+    case 'w':
+      return check_keyword(start, end, "while", TOKEN_KEYWORD_WHILE);
+  }
+}
+
 static int isident(int c) {
   return c == '_' || isalnum(c);
 }
@@ -17,11 +39,22 @@ TokenizedBuffer tokenize(Arena* arena, SourceContents source) {
   int cur_line = 1;
 
   while (true) {
-    while (isspace(*cur_char)) {
-      if (*cur_char == '\n') {
-        ++cur_line;
+    while (true) {
+      while (isspace(*cur_char)) {
+        if (*cur_char == '\n') {
+          ++cur_line;
+        }
+        ++cur_char;
       }
-      ++cur_char;
+
+      if (cur_char[0] == '/' && cur_char[1] == '/') {
+        while (*cur_char != '\0' && *cur_char != '\n') {
+          ++cur_char;
+        }
+      }
+      else {
+        break;
+      }
     }
 
     if (*cur_char == '\0') {
@@ -44,7 +77,7 @@ TokenizedBuffer tokenize(Arena* arena, SourceContents source) {
           while (isident(*cur_char)) {
             ++cur_char;
           }
-          kind = TOKEN_IDENTIFIER;
+          kind = identifier_kind(start, cur_char);
         }
         break;
     }
