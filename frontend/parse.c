@@ -18,6 +18,7 @@ typedef struct {
     struct { bool is_expr; } block_stmt_accept;
     struct { Token if_token; } if_accept;
     struct { Token else_token; } else_accept;
+    struct { Token while_token; } while_accept;
   } as;
 } ParseState;
 
@@ -269,6 +270,10 @@ static bool handle_BLOCK_STMT_BEGIN(Context* context, ParseState state) {
     case TOKEN_KEYWORD_IF:
       stmt_state = (ParseState) { .kind = STATE_IF_BEGIN };
       break;
+
+    case TOKEN_KEYWORD_WHILE:
+      stmt_state = (ParseState) { .kind = STATE_WHILE_BEGIN };
+      break;
   }
 
   push_state(context, (ParseState) {
@@ -364,6 +369,38 @@ static bool handle_IF_ACCEPT(Context* context, ParseState state) {
   ParseNode* node = new_node(context, PARSE_NODE_IF, token);
   node->as.if_.predicate = predicate;
   node->as.if_.body = body;
+
+  push_node(context, node);
+
+  return true;
+}
+
+static bool handle_WHILE_BEGIN(Context* context, ParseState state) {
+  (void)state;
+
+  Token token = peek(context);
+  REQUIRE(context, TOKEN_KEYWORD_WHILE, "expected a 'while' loop");
+
+  push_state(context, (ParseState){
+    .kind = STATE_WHILE_ACCEPT,
+    .as.while_accept.while_token = token
+  });
+
+  push_state(context, (ParseState) {.kind=STATE_BLOCK_BEGIN});
+  push_state(context, (ParseState) {.kind=STATE_EXPR});
+
+  return true;
+}
+
+static bool handle_WHILE_ACCEPT(Context* context, ParseState state) {
+  Token while_token = state.as.while_accept.while_token;
+
+  ParseNode* body = pop_node(context);
+  ParseNode* predicate = pop_node(context);
+
+  ParseNode* node = new_node(context, PARSE_NODE_WHILE, while_token);
+  node->as.while_.predicate = predicate;
+  node->as.while_.body = body;
 
   push_node(context, node);
 

@@ -60,11 +60,15 @@ struct ParseNode {
     struct {
       ParseNode* predicate;
       ParseNode* body;
-     } if_;
-     struct {
+    } if_;
+    struct {
+      ParseNode* predicate;
+      ParseNode* body;
+    } while_;
+    struct {
       ParseNode* first;
       ParseNode* second;
-     } else_;
+    } else_;
   } as;
 };
 
