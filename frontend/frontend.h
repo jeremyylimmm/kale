@@ -16,6 +16,7 @@ enum {
   TOKEN_KEYWORD_IF,
   TOKEN_KEYWORD_ELSE,
   TOKEN_KEYWORD_WHILE,
+  TOKEN_KEYWORD_RETURN,
 
   NUM_TOKEN_KINDS
 };
@@ -73,6 +74,9 @@ struct ParseNode {
       ParseNode* name;
       ParseNode* type;
     } local_decl;
+    struct {
+      ParseNode* value;
+    } _return;
   } as;
 };
 

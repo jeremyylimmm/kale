@@ -9,4 +9,6 @@
   while 1 {
     20 * 21;
   }
+
+  return my_var;
 }

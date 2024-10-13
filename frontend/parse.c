@@ -19,6 +19,7 @@ typedef struct {
     struct { Token if_token; } if_accept;
     struct { Token else_token; } else_accept;
     struct { Token while_token; } while_accept;
+    struct { Token return_token; } return_accept;
   } as;
 } ParseState;
 
@@ -294,6 +295,11 @@ static bool handle_BLOCK_STMT(Context* context, ParseState state) {
     case TOKEN_KEYWORD_WHILE:
       stmt_state = (ParseState) { .kind = STATE_WHILE};
       break;
+
+    case TOKEN_KEYWORD_RETURN:
+      require_semicolon = true;
+      stmt_state = (ParseState) { .kind = STATE_RETURN};
+      break;
   }
 
   push_state(context, (ParseState) {
@@ -451,6 +457,33 @@ static bool handle_LOCAL_DECL(Context* context, ParseState state) {
       .as.binary_infix.prec = binary_prec(peek(context), true)
     });
   }
+
+  return true;
+}
+
+static bool handle_RETURN(Context* context, ParseState state) {
+  (void)state;
+
+  Token token = peek(context);
+  REQUIRE(context, TOKEN_KEYWORD_RETURN, "expected a 'return' statement");
+
+  push_state(context, (ParseState) {
+    .kind = STATE_RETURN_ACCEPT,
+    .as.return_accept.return_token = token
+  });
+
+  push_state(context, (ParseState) {.kind=STATE_EXPR});
+
+  return true;
+}
+
+static bool handle_RETURN_ACCEPT(Context* context, ParseState state) {
+  ParseNode* value = pop_node(context);
+
+  ParseNode* node = new_node(context, PARSE_NODE_RETURN, state.as.return_accept.return_token);
+  node->as._return.value = value;
+
+  push_node(context, node);
 
   return true;
 }

@@ -20,3 +20,4 @@ X(LOCAL_DECL, "local_decl")
 X(IDENTIFIER, "identifier")
 
 X(ASSIGN, "assign")
+X(RETURN, "return")

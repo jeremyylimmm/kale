@@ -76,7 +76,7 @@ void dump_parse_tree(ParseTree tree) {
     print_indentation(item.last_child, item.depth);
     printf("%s: '%.*s'\n", parse_node_debug_name[node->kind], node->token.length, node->token.start);
 
-    static_assert(NUM_PARSE_NODE_KINDS == 15, "handle all parse tree dump");
+    static_assert(NUM_PARSE_NODE_KINDS == 16, "handle all parse tree dump");
     switch (node->kind) {
       default:
         assert(false);
@@ -117,6 +117,10 @@ void dump_parse_tree(ParseTree tree) {
       case PARSE_NODE_ASSIGN:
         CHILD(node->as.bin.rhs, true);
         CHILD(node->as.bin.lhs, false);
+        break;
+      case PARSE_NODE_RETURN:
+        CHILD(node->as._return.value, true);
+        break;
     }
 
     allocator_free(scratch_allocator, item.last_child);
