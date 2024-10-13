@@ -113,6 +113,12 @@ static bool handle_PRIMARY(Context* context, ParseState state) {
       push_node(context, node);
       return true;
     }
+
+    case TOKEN_IDENTIFIER: {
+      ParseNode* node = new_node(context, PARSE_NODE_IDENTIFIER, lex(context));
+      push_node(context, node);
+      return true;
+    }
   }
 }
 
@@ -127,7 +133,7 @@ static bool handle_BINARY(Context* context, ParseState state) {
   return true;
 }
 
-static int binary_prec(Token op) {
+static int binary_prec(Token op, bool inner) {
   switch (op.kind) {
     default:
       return 0;
@@ -137,6 +143,8 @@ static int binary_prec(Token op) {
     case '+':
     case '-':
       return 10;
+    case '=':
+      return 5 - (inner ? 1 : 0);
   }
 }
 
@@ -153,11 +161,13 @@ static ParseNodeKind binary_node_kind(Token op) {
       return PARSE_NODE_ADD;
     case '-':
       return PARSE_NODE_SUB;
+    case '=':
+      return PARSE_NODE_ASSIGN;
   }
 }
 
 static bool handle_BINARY_INFIX(Context* context, ParseState state) {
-  if (binary_prec(peek(context)) > state.as.binary_infix.prec) {
+  if (binary_prec(peek(context), false) > state.as.binary_infix.prec) {
     Token op = lex(context);
 
     push_state(context, (ParseState) {
@@ -168,7 +178,7 @@ static bool handle_BINARY_INFIX(Context* context, ParseState state) {
 
     push_state(context, (ParseState){
       .kind = STATE_BINARY,
-      .as.binary.prec = binary_prec(op)
+      .as.binary.prec = binary_prec(op, true)
     });
   }
 
@@ -434,6 +444,13 @@ static bool handle_LOCAL_DECL(Context* context, ParseState state) {
   node->as.local_decl.type = type; 
 
   push_node(context, node);
+
+  if (peek(context).kind == '=') {
+    push_state(context, (ParseState) {
+      .kind=STATE_BINARY_INFIX,
+      .as.binary_infix.prec = binary_prec(peek(context), true)
+    });
+  }
 
   return true;
 }

@@ -18,3 +18,5 @@ X(WHILE, "while")
 
 X(LOCAL_DECL, "local_decl")
 X(IDENTIFIER, "identifier")
+
+X(ASSIGN, "assign")

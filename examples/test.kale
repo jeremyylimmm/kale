@@ -1,5 +1,8 @@
 {
-  my_var: int;
+  my_second_var: int;
+  my_var: int = 3;
+
+  my_var = my_second_var = 1 * 3 + 2;
 
   15 * 4 + 45 / 15 * 4 - 3;
 
