@@ -52,7 +52,6 @@ static char* parse_node_debug_name[NUM_PARSE_NODE_KINDS] = {
 
 typedef struct ParseNode ParseNode;
 struct ParseNode {
-  ParseNode* prev;
   ParseNodeKind kind;
   Token token;
 
