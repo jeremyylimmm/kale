@@ -285,20 +285,20 @@ static bool handle_BLOCK_STMT(Context* context, ParseState state) {
       break;
 
     case '{':
-      stmt_state = (ParseState) { .kind = STATE_BLOCK};
+      stmt_state = (ParseState) { .kind = STATE_BLOCK };
       break;
     
     case TOKEN_KEYWORD_IF:
-      stmt_state = (ParseState) { .kind = STATE_IF};
+      stmt_state = (ParseState) { .kind = STATE_IF };
       break;
 
     case TOKEN_KEYWORD_WHILE:
-      stmt_state = (ParseState) { .kind = STATE_WHILE};
+      stmt_state = (ParseState) { .kind = STATE_WHILE };
       break;
 
     case TOKEN_KEYWORD_RETURN:
       require_semicolon = true;
-      stmt_state = (ParseState) { .kind = STATE_RETURN};
+      stmt_state = (ParseState) { .kind = STATE_RETURN };
       break;
   }
 
