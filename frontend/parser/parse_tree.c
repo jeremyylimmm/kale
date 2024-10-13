@@ -9,10 +9,10 @@ typedef struct {
   ParseNode* node;
 } Item;
 
-static uint64_t* alloc_last_child(Allocator* allocator, uint64_t* prev_last_child, int tree_count) {
+static uint64_t* alloc_last_child(Arena* arena, uint64_t* prev_last_child, int tree_count) {
   size_t alloc_size = bitset_num_u64(tree_count) * sizeof(uint64_t);
 
-  uint64_t* last_child = allocator_alloc(allocator, alloc_size);
+  uint64_t* last_child = arena_push(arena, alloc_size);
 
   if (prev_last_child) {
     memcpy(last_child, prev_last_child, alloc_size);
@@ -24,8 +24,8 @@ static uint64_t* alloc_last_child(Allocator* allocator, uint64_t* prev_last_chil
   return last_child;
 }
 
-static Item make_item(Allocator* allocator, int tree_count, uint64_t* prev_last_child, int depth, ParseNode* node, bool is_last_child) {
-  uint64_t* last_child = alloc_last_child(allocator, prev_last_child, tree_count);
+static Item make_item(Arena* arena, int tree_count, uint64_t* prev_last_child, int depth, ParseNode* node, bool is_last_child) {
+  uint64_t* last_child = alloc_last_child(arena, prev_last_child, tree_count);
 
   if (is_last_child) {
     bitset_set(last_child, depth);
@@ -60,73 +60,48 @@ void dump_parse_tree(ParseTree tree) {
   Scratch scratch = global_scratch(0, NULL);
   Allocator* scratch_allocator = new_allocator(scratch.arena);
 
+  Item* data = arena_array(scratch.arena, Item, tree.num_nodes);
+
   DynamicArray(Item) stack = new_dynamic_array(scratch_allocator);
 
   int tree_count = tree.num_nodes;
 
   ParseNode* root = &tree.nodes[tree.num_nodes-1];
-  dynamic_array_put(stack, make_item(scratch_allocator, tree_count, NULL, 0, root, true));
-
-  #define CHILD(x, is_last_child) dynamic_array_put(stack, make_item(scratch_allocator, tree_count, item.last_child, item.depth + 1, x, is_last_child))
+  dynamic_array_put(stack, make_item(scratch.arena, tree_count, NULL, 0, root, true));
 
   while (dynamic_array_length(stack)) {
     Item item = dynamic_array_pop(stack);
     ParseNode* node = item.node;
 
-    print_indentation(item.last_child, item.depth);
-    printf("%s: '%.*s'\n", parse_node_debug_name[node->kind], node->token.length, node->token.start);
+    int index = (int)(node - tree.nodes);
+    data[index] = item;
 
-    static_assert(NUM_PARSE_NODE_KINDS == 16, "handle all parse tree dump");
-    switch (node->kind) {
-      default:
-        assert(false);
-        break;
-      case PARSE_NODE_INTEGER_LITERAL:
-      case PARSE_NODE_BLOCK_OPEN:
-      case PARSE_NODE_IDENTIFIER:
-        break;
-      case PARSE_NODE_SEMICOLON_STATEMENT:
-        CHILD(node->as.semi_stmt.child, true);
-        break;
-      case PARSE_NODE_BLOCK:
-        for (ParseNode* n = node->as.block.tail_stmt; n; n = n->prev) {
-          CHILD(n, n == node->as.block.tail_stmt);
-        }
-        CHILD(node->as.block.open, node->as.block.tail_stmt == NULL);
-        break;
-      case PARSE_NODE_IF:
-        CHILD(node->as.if_.body, true);
-        CHILD(node->as.if_.predicate, false);
-        break;
-      case PARSE_NODE_WHILE:
-        CHILD(node->as.while_.body, true);
-        CHILD(node->as.while_.predicate, false);
-        break;
-      case PARSE_NODE_ELSE:
-        CHILD(node->as.else_.second, true);
-        CHILD(node->as.else_.first, false);
-        break;
-      case PARSE_NODE_LOCAL_DECL:
-        CHILD(node->as.local_decl.type, true);
-        CHILD(node->as.local_decl.name, false);
-        break;
-      case PARSE_NODE_ADD:
-      case PARSE_NODE_SUB:
-      case PARSE_NODE_MUL:
-      case PARSE_NODE_DIV:
-      case PARSE_NODE_ASSIGN:
-        CHILD(node->as.bin.rhs, true);
-        CHILD(node->as.bin.lhs, false);
-        break;
-      case PARSE_NODE_RETURN:
-        CHILD(node->as._return.value, true);
-        break;
+    int child = (int)(node - tree.nodes) - 1;
+
+    for (int i = 0; i < node->num_children; ++i) {
+      assert(child >= 0);
+
+      ParseNode* c = &tree.nodes[child];
+
+      dynamic_array_put(stack, make_item(
+        scratch.arena,
+        tree_count,
+        item.last_child,
+        item.depth + 1,
+        c,
+        i == node->num_children-1 
+      ));
+
+      child -= c->subtree_size;
     }
-
-    allocator_free(scratch_allocator, item.last_child);
   }
 
-  #undef CHILD
+  for (int i = tree.num_nodes-1; i >= 0; --i) {
+    Item item = data[i];
+    ParseNode* node = &tree.nodes[i];
+    print_indentation(item.last_child, item.depth);
+    printf("%s: '%.*s'\n", parse_node_debug_name[node->kind], node->token.length, node->token.start);
+  }
 
   scratch_release(&scratch);
 }

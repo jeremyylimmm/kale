@@ -15,7 +15,8 @@ typedef struct {
     struct { int prec; } binary;
     struct { int prec; } binary_infix;
     struct { Token op; int prec; } binary_accept;
-    struct { bool require_semicolon; } block_stmt_accept;
+    struct { int stmt_count; } block_stmt;
+    struct { bool require_semicolon; int stmt_count; } block_stmt_accept;
     struct { Token if_token; } if_accept;
     struct { Token else_token; } else_accept;
     struct { Token while_token; } while_accept;
@@ -24,10 +25,10 @@ typedef struct {
 } ParseState;
 
 typedef struct {
+  Arena* arena;
   SourceContents source;
 
   DynamicArray(ParseState) state_stack;
-  DynamicArray(int) node_stack;
   
   TokenizedBuffer tokens;
   int cur_token;
@@ -41,15 +42,6 @@ typedef bool(*HandleStateFunc)(Context*, ParseState);
 
 static void push_state(Context* context, ParseState state) {
   dynamic_array_put(context->state_stack, state);
-}
-
-static void push_node(Context* context, ParseNode* node) {
-  int index = (int)(node - context->nodes);
-  dynamic_array_put(context->node_stack, index);
-}
-
-static ParseNode* pop_node(Context* context) {
-  return &context->nodes[dynamic_array_pop(context->node_stack)];
 }
 
 static Token peekn(Context* context, int n) {
@@ -76,11 +68,29 @@ static Token lex(Context* context) {
   return token;
 }
 
-static ParseNode* new_node(Context* context, ParseNodeKind kind, Token token) {
+static ParseNode* new_node(Context* context, ParseNodeKind kind, Token token, int num_children) {
   assert(context->num_nodes < context->node_capacity);
-  ParseNode* node = &context->nodes[context->num_nodes++];
+
+  int index = context->num_nodes++;
+
+  ParseNode* node = &context->nodes[index];
   node->kind = kind;
   node->token = token;
+  node->num_children = num_children;
+
+  int subtree_size = 1;
+
+  int child = index - 1;
+
+  for (int i = 0; i < num_children; ++i) {
+    assert(child >= 0);
+    ParseNode* c = &context->nodes[child];
+    subtree_size += c->subtree_size;
+    child -= c->subtree_size;
+  }
+
+  node->subtree_size = subtree_size;
+
   return node;
 }
 
@@ -110,14 +120,12 @@ static bool handle_PRIMARY(Context* context, ParseState state) {
       return false;
 
     case TOKEN_INTEGER_LITERAL: {
-      ParseNode* node = new_node(context, PARSE_NODE_INTEGER_LITERAL, lex(context));
-      push_node(context, node);
+      new_node(context, PARSE_NODE_INTEGER_LITERAL, lex(context), 0);
       return true;
     }
 
     case TOKEN_IDENTIFIER: {
-      ParseNode* node = new_node(context, PARSE_NODE_IDENTIFIER, lex(context));
-      push_node(context, node);
+      new_node(context, PARSE_NODE_IDENTIFIER, lex(context), 0);
       return true;
     }
   }
@@ -187,16 +195,9 @@ static bool handle_BINARY_INFIX(Context* context, ParseState state) {
 }
 
 static bool handle_BINARY_ACCEPT(Context* context, ParseState state) {
-  ParseNode* rhs = pop_node(context);
-  ParseNode* lhs = pop_node(context);
-
   Token op = state.as.binary_accept.op;
 
-  ParseNode* node = new_node(context, binary_node_kind(op), op);
-  node->as.bin.lhs = lhs;
-  node->as.bin.rhs = rhs;
-
-  push_node(context, node);
+  new_node(context, binary_node_kind(op), op, 2);
 
   push_state(context, (ParseState){
     .kind = STATE_BINARY_INFIX,
@@ -223,45 +224,19 @@ static bool handle_BLOCK(Context* context, ParseState state) {
   Token token = peek(context);
   REQUIRE(context, '{', "expected a block '{'");
 
-  ParseNode* open = new_node(context, PARSE_NODE_BLOCK_OPEN, token);
-  push_node(context, open);
+  new_node(context, PARSE_NODE_BLOCK_OPEN, token, 0);
 
   push_state(context, (ParseState) {
-    .kind = STATE_BLOCK_STMT
+    .kind = STATE_BLOCK_STMT,
+    .as.block_stmt.stmt_count = 0
   });
 
   return true;
 }
 
-static void close_block(Context* context) {
-  ParseNode* open = NULL;
-
-  ParseNode tail = {0};
-  ParseNode* cur = &tail;
-
-  while (!open) {
-    ParseNode* node = pop_node(context);
-    
-    if (node->kind == PARSE_NODE_BLOCK_OPEN) {
-      open = node;
-    }
-    else {
-      cur = cur->prev = node;
-    }
-  }
-
-  ParseNode* block = new_node(context, PARSE_NODE_BLOCK, lex(context));
-  block->as.block.open = open;
-  block->as.block.tail_stmt = tail.prev;
-
-  push_node(context, block);
-}
-
 static bool handle_BLOCK_STMT(Context* context, ParseState state) {
-  (void)state;
-
   if (peek(context).kind == '}') {
-    close_block(context);
+    new_node(context, PARSE_NODE_BLOCK, lex(context), state.as.block_stmt.stmt_count + 1);
     return true;
   }
 
@@ -304,7 +279,8 @@ static bool handle_BLOCK_STMT(Context* context, ParseState state) {
 
   push_state(context, (ParseState) {
     .kind = STATE_BLOCK_STMT_ACCEPT,
-    .as.block_stmt_accept.require_semicolon = require_semicolon
+    .as.block_stmt_accept.require_semicolon = require_semicolon,
+    .as.block_stmt_accept.stmt_count = state.as.block_stmt.stmt_count + 1
   });
 
   push_state(context, stmt_state);
@@ -319,13 +295,13 @@ static bool handle_BLOCK_STMT_ACCEPT(Context* context, ParseState state) {
     Token semi = peek(context);
     REQUIRE(context, ';', "expected a semi-colon ';'");
 
-    ParseNode* stmt = new_node(context, PARSE_NODE_SEMICOLON_STATEMENT, semi);
-    stmt->as.semi_stmt.child = pop_node(context);
-
-    push_node(context, stmt);
+    new_node(context, PARSE_NODE_SEMICOLON_STATEMENT, semi, 1);
   }
 
-  push_state(context, (ParseState){ .kind = STATE_BLOCK_STMT});
+  push_state(context, (ParseState){
+    .kind = STATE_BLOCK_STMT,
+    .as.block_stmt.stmt_count = state.as.block_stmt_accept.stmt_count
+  });
 
   return true;
 }
@@ -374,14 +350,7 @@ static bool handle_ELSE(Context* context, ParseState state) {
 static bool handle_ELSE_ACCEPT(Context* context, ParseState state) {
   Token token = state.as.else_accept.else_token;
 
-  ParseNode* else_block = pop_node(context);
-  ParseNode* then_block = pop_node(context);
-
-  ParseNode* node = new_node(context, PARSE_NODE_ELSE, token);
-  node->as.else_.first = then_block;
-  node->as.else_.second = else_block;
-
-  push_node(context, node);
+  new_node(context, PARSE_NODE_ELSE, token, 2);
 
   return true;
 }
@@ -389,14 +358,7 @@ static bool handle_ELSE_ACCEPT(Context* context, ParseState state) {
 static bool handle_IF_ACCEPT(Context* context, ParseState state) {
   Token token = state.as.if_accept.if_token;
 
-  ParseNode* body = pop_node(context);
-  ParseNode* predicate = pop_node(context);
-
-  ParseNode* node = new_node(context, PARSE_NODE_IF, token);
-  node->as.if_.predicate = predicate;
-  node->as.if_.body = body;
-
-  push_node(context, node);
+  new_node(context, PARSE_NODE_IF, token, 2);
 
   return true;
 }
@@ -421,14 +383,7 @@ static bool handle_WHILE(Context* context, ParseState state) {
 static bool handle_WHILE_ACCEPT(Context* context, ParseState state) {
   Token while_token = state.as.while_accept.while_token;
 
-  ParseNode* body = pop_node(context);
-  ParseNode* predicate = pop_node(context);
-
-  ParseNode* node = new_node(context, PARSE_NODE_WHILE, while_token);
-  node->as.while_.predicate = predicate;
-  node->as.while_.body = body;
-
-  push_node(context, node);
+  new_node(context, PARSE_NODE_WHILE, while_token, 2);
 
   return true;
 }
@@ -436,20 +391,16 @@ static bool handle_WHILE_ACCEPT(Context* context, ParseState state) {
 static bool handle_LOCAL_DECL(Context* context, ParseState state) {
   (void)state;
 
-  ParseNode* name = new_node(context, PARSE_NODE_IDENTIFIER, peek(context));
+  new_node(context, PARSE_NODE_IDENTIFIER, peek(context), 0);
   REQUIRE(context, TOKEN_IDENTIFIER, "expected a local declaration");
 
   Token colon = peek(context);
   REQUIRE(context, ':', "expected a local declaration");
 
-  ParseNode* type = new_node(context, PARSE_NODE_IDENTIFIER, peek(context));
+  new_node(context, PARSE_NODE_IDENTIFIER, peek(context), 0);
   REQUIRE(context, TOKEN_IDENTIFIER, "expected a type name");
 
-  ParseNode* node = new_node(context, PARSE_NODE_LOCAL_DECL, colon);
-  node->as.local_decl.name = name; 
-  node->as.local_decl.type = type; 
-
-  push_node(context, node);
+  new_node(context, PARSE_NODE_LOCAL_DECL, colon, 2);
 
   if (peek(context).kind == '=') {
     push_state(context, (ParseState) {
@@ -478,13 +429,7 @@ static bool handle_RETURN(Context* context, ParseState state) {
 }
 
 static bool handle_RETURN_ACCEPT(Context* context, ParseState state) {
-  ParseNode* value = pop_node(context);
-
-  ParseNode* node = new_node(context, PARSE_NODE_RETURN, state.as.return_accept.return_token);
-  node->as._return.value = value;
-
-  push_node(context, node);
-
+  new_node(context, PARSE_NODE_RETURN, state.as.return_accept.return_token, 1);
   return true;
 }
 
@@ -503,7 +448,6 @@ bool parse(Arena* arena, SourceContents source, TokenizedBuffer tokens, ParseTre
   Context context = {
     .source = source,
     .state_stack = new_dynamic_array(scratch_allocator),
-    .node_stack = new_dynamic_array(scratch_allocator),
     .tokens = tokens,
     .nodes = arena_array(arena, ParseNode, tokens.length-1),
     .node_capacity = tokens.length-1
@@ -521,6 +465,7 @@ bool parse(Arena* arena, SourceContents source, TokenizedBuffer tokens, ParseTre
   }
 
   assert(context.num_nodes == context.node_capacity);
+  assert(context.nodes[context.node_capacity-1].subtree_size = context.node_capacity);
 
   memset(out_parse_tree, 0, sizeof(*out_parse_tree));
   out_parse_tree->num_nodes = context.num_nodes;

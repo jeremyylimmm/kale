@@ -1,0 +1,16 @@
+X(INTEGER_CONSTANT, "int_const")
+
+X(ADD, "add")
+X(SUB, "sub")
+X(MUL, "mul")
+X(DIV, "div")
+
+X(LOCAL, "local")
+X(ASSIGN, "assign")
+
+X(SCOPE_OPEN, "scope_open")
+X(SCOPE_CLOSE, "scope_close")
+
+X(JUMP, "jmp")
+X(BRANCH, "branch")
+X(RETURN, "return")
