@@ -65,7 +65,7 @@ static Token lex(Context* context) {
   return token;
 }
 
-static ParseNode* new_node(Context* context, ParseNodeKind kind, Token token, int num_children) {
+static void new_node(Context* context, ParseNodeKind kind, Token token, int num_children) {
   assert(context->num_nodes < context->node_capacity);
 
   int index = context->num_nodes++;
@@ -79,8 +79,6 @@ static ParseNode* new_node(Context* context, ParseNodeKind kind, Token token, in
   foreach_parse_node_child(node, child) {
     node->subtree_size += child.node->subtree_size;
   }
-
-  return node;
 }
 
 static bool match(Context* context, int kind, char* message) {
