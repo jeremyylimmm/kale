@@ -17,10 +17,7 @@ typedef struct {
     struct { Token op; int prec; } binary_accept;
     struct { int stmt_count; } block_stmt;
     struct { bool require_semicolon; int stmt_count; } block_stmt_accept;
-    struct { Token if_token; } if_accept;
-    struct { Token else_token; } else_accept;
-    struct { Token while_token; } while_accept;
-    struct { Token return_token; } return_accept;
+    struct { Token token; ParseNodeKind kind; int num_children; } accept;
   } as;
 } ParseState;
 
@@ -304,10 +301,11 @@ static bool handle_IF(Context* context, ParseState state) {
   Token token = peek(context);
   REQUIRE(context, TOKEN_KEYWORD_IF, "expected 'if' statement");
 
-
   push_state(context, (ParseState){
-    .kind=STATE_IF_ACCEPT,
-    .as.if_accept.if_token = token
+    .kind=STATE_ACCEPT,
+    .as.accept.token = token,
+    .as.accept.kind = PARSE_NODE_IF,
+    .as.accept.num_children = 2
   });
 
   push_state(context, (ParseState){.kind=STATE_ELSE});
@@ -324,8 +322,10 @@ static bool handle_ELSE(Context* context, ParseState state) {
     Token else_token = lex(context);                        
 
     push_state(context, (ParseState){
-      .kind=STATE_ELSE_ACCEPT,
-      .as.else_accept.else_token = else_token
+      .kind=STATE_ACCEPT,
+      .as.accept.token = else_token,
+      .as.accept.kind = PARSE_NODE_ELSE,
+      .as.accept.num_children = 2
     });
 
     if (peek(context).kind == TOKEN_KEYWORD_IF) {
@@ -339,22 +339,6 @@ static bool handle_ELSE(Context* context, ParseState state) {
   return true;
 }
 
-static bool handle_ELSE_ACCEPT(Context* context, ParseState state) {
-  Token token = state.as.else_accept.else_token;
-
-  new_node(context, PARSE_NODE_ELSE, token, 2);
-
-  return true;
-}
-
-static bool handle_IF_ACCEPT(Context* context, ParseState state) {
-  Token token = state.as.if_accept.if_token;
-
-  new_node(context, PARSE_NODE_IF, token, 2);
-
-  return true;
-}
-
 static bool handle_WHILE(Context* context, ParseState state) {
   (void)state;
 
@@ -362,20 +346,14 @@ static bool handle_WHILE(Context* context, ParseState state) {
   REQUIRE(context, TOKEN_KEYWORD_WHILE, "expected a 'while' loop");
 
   push_state(context, (ParseState){
-    .kind = STATE_WHILE_ACCEPT,
-    .as.while_accept.while_token = token
+    .kind = STATE_ACCEPT,
+    .as.accept.token = token,
+    .as.accept.kind = PARSE_NODE_WHILE,
+    .as.accept.num_children = 2
   });
 
   push_state(context, (ParseState) {.kind=STATE_BLOCK});
   push_state(context, (ParseState) {.kind=STATE_EXPR});
-
-  return true;
-}
-
-static bool handle_WHILE_ACCEPT(Context* context, ParseState state) {
-  Token while_token = state.as.while_accept.while_token;
-
-  new_node(context, PARSE_NODE_WHILE, while_token, 2);
 
   return true;
 }
@@ -411,8 +389,10 @@ static bool handle_RETURN(Context* context, ParseState state) {
   REQUIRE(context, TOKEN_KEYWORD_RETURN, "expected a 'return' statement");
 
   push_state(context, (ParseState) {
-    .kind = STATE_RETURN_ACCEPT,
-    .as.return_accept.return_token = token
+    .kind = STATE_ACCEPT,
+    .as.accept.token = token,
+    .as.accept.kind = PARSE_NODE_RETURN,
+    .as.accept.num_children = 1
   });
 
   push_state(context, (ParseState) {.kind=STATE_EXPR});
@@ -420,8 +400,8 @@ static bool handle_RETURN(Context* context, ParseState state) {
   return true;
 }
 
-static bool handle_RETURN_ACCEPT(Context* context, ParseState state) {
-  new_node(context, PARSE_NODE_RETURN, state.as.return_accept.return_token, 1);
+static bool handle_ACCEPT(Context* context, ParseState state) {
+  new_node(context, state.as.accept.kind, state.as.accept.token, state.as.accept.num_children);
   return true;
 }
 
@@ -457,7 +437,7 @@ bool parse(Arena* arena, SourceContents source, TokenizedBuffer tokens, ParseTre
   }
 
   assert(context.num_nodes == context.node_capacity);
-  assert(context.nodes[context.node_capacity-1].subtree_size = context.node_capacity);
+  assert(context.nodes[context.node_capacity-1].subtree_size == context.node_capacity);
 
   memset(out_parse_tree, 0, sizeof(*out_parse_tree));
   out_parse_tree->num_nodes = context.num_nodes;
