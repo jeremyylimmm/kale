@@ -77,19 +77,11 @@ static ParseNode* new_node(Context* context, ParseNodeKind kind, Token token, in
   node->kind = kind;
   node->token = token;
   node->num_children = num_children;
+  node->subtree_size = 1;
 
-  int subtree_size = 1;
-
-  int child = index - 1;
-
-  for (int i = 0; i < num_children; ++i) {
-    assert(child >= 0);
-    ParseNode* c = &context->nodes[child];
-    subtree_size += c->subtree_size;
-    child -= c->subtree_size;
+  foreach_parse_node_child(node, child) {
+    node->subtree_size += child.node->subtree_size;
   }
-
-  node->subtree_size = subtree_size;
 
   return node;
 }

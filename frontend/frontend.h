@@ -124,7 +124,20 @@ TokenizedBuffer tokenize(Arena* arena, SourceContents source);
 
 bool parse(Arena* arena, SourceContents source, TokenizedBuffer tokens, ParseTree* out_parse_tree);
 
+typedef struct { int index; ParseNode* node; } ParseNodeChildrenIterator;
+ParseNodeChildrenIterator parse_node_children_begin(ParseNode* node);
+bool parse_node_children_valid(ParseNodeChildrenIterator* it);
+void parse_node_children_next(ParseNodeChildrenIterator* it);
+
+#define foreach_parse_node_child(node, it) \
+  for ( \
+    ParseNodeChildrenIterator it = parse_node_children_begin(node); \
+    parse_node_children_valid(&it);\
+    parse_node_children_next(&it) \
+  )
+
 void dump_parse_tree(ParseTree tree);
+#define PARSE_TREE_POSTORDER_ITER(tree, it) for (ParseNode* it = (tree).nodes; it != (tree).nodes + (tree).num_nodes; ++it)
 
 void error_at_token(char* source_path, char* source, Token token, char* fmt, ...);
 

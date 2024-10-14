@@ -3,6 +3,22 @@
 #include "frontend.h"
 #include "dynamic_array.h"
 
+ParseNodeChildrenIterator parse_node_children_begin(ParseNode* node) {
+  return (ParseNodeChildrenIterator) {
+    .index = node->num_children - 1,
+    .node = node - 1
+  };
+}
+
+bool parse_node_children_valid(ParseNodeChildrenIterator* it) {
+  return it->index >= 0;
+}
+
+void parse_node_children_next(ParseNodeChildrenIterator* it) {
+  it->node -= it->node->subtree_size;
+  it->index -= 1;
+}
+
 typedef struct {
   int depth;
   uint64_t* last_child;
@@ -73,30 +89,21 @@ void dump_parse_tree(ParseTree tree) {
     Item item = dynamic_array_pop(stack);
     ParseNode* node = item.node;
 
-    int index = (int)(node - tree.nodes);
-    data[index] = item;
-
-    int child = (int)(node - tree.nodes) - 1;
-
-    for (int i = 0; i < node->num_children; ++i) {
-      assert(child >= 0);
-
-      ParseNode* c = &tree.nodes[child];
-
+    foreach_parse_node_child(node, child) {
       dynamic_array_put(stack, make_item(
         scratch.arena,
         tree_count,
         item.last_child,
         item.depth + 1,
-        c,
-        i == node->num_children-1 
+        child.node,
+        child.index == 0
       ));
-
-      child -= c->subtree_size;
     }
+
+    data[node - tree.nodes] = item;
   }
 
-  for (int i = tree.num_nodes-1; i >= 0; --i) {
+  for_range_rev(int, i, tree.num_nodes) {
     Item item = data[i];
     ParseNode* node = &tree.nodes[i];
     print_indentation(item.last_child, item.depth);
