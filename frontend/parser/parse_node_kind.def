@@ -21,8 +21,8 @@ X(WHILE, "while")
 X(LOCAL_DECL, "local_decl")
 X(LOCAL_DECL_STATEMENT, "local_decl_stmt")
 
-
 X(RETURN_STATEMENT_START, "return_start")
 X(RETURN_STATEMENT, "return_stmt")
 
-X(FN, "fn")
+X(FN_INTRODUCER, "fn_introducer")
+X(FN_DEF, "fn_def")

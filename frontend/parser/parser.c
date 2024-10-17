@@ -15,7 +15,8 @@ typedef struct {
     struct { int prec; } binary;
     struct { int prec; } binary_infix;
     struct { Token op; int prec; } binary_accept;
-    struct { int stmt_count; } block_stmt;
+    struct { ParseNodeKind block_kind; int additional_count; } block;
+    struct { ParseNodeKind block_kind; int additional_count; int stmt_count; } block_stmt;
     struct { Token token; ParseNodeKind kind; int num_children; } accept;
   } as;
 } ParseState;
@@ -205,8 +206,6 @@ static bool handle_EXPR(Context* context, ParseState state) {
 }
 
 static bool handle_BLOCK(Context* context, ParseState state) {
-  (void)state;
-
   Token token = peek(context);
   REQUIRE(context, '{', "expected a block '{'");
 
@@ -214,19 +213,40 @@ static bool handle_BLOCK(Context* context, ParseState state) {
 
   push_state(context, (ParseState) {
     .kind = STATE_BLOCK_STMT,
+    .as.block_stmt.additional_count = state.as.block.additional_count,
+    .as.block_stmt.block_kind = state.as.block.block_kind,
     .as.block_stmt.stmt_count = 0
   });
 
   return true;
 }
 
+static void push_block_state(Context* context, int additional_children, ParseNodeKind block_kind) {
+  push_state(context, (ParseState) {
+    .kind = STATE_BLOCK,
+    .as.block.additional_count = additional_children,
+    .as.block.block_kind = block_kind
+  });
+}
+
+static void push_generic_block_state(Context* context) {
+  push_block_state(context, 0, PARSE_NODE_BLOCK);
+}
+
 static bool handle_BLOCK_STMT(Context* context, ParseState state) {
   if (peek(context).kind == '}') {
-    new_node(context, PARSE_NODE_BLOCK, lex(context), state.as.block_stmt.stmt_count + 1);
+    ParseNodeKind kind = state.as.block_stmt.block_kind; 
+    int num_children = state.as.block_stmt.stmt_count + 1 + state.as.block_stmt.additional_count;
+    new_node(context, kind, lex(context), num_children);
     return true;
   }
 
-  push_state(context, (ParseState){.kind=STATE_BLOCK_STMT, .as.block_stmt.stmt_count = state.as.block_stmt.stmt_count + 1});
+  push_state(context, (ParseState){
+    .kind=STATE_BLOCK_STMT,
+    .as.block_stmt.additional_count = state.as.block_stmt.additional_count,
+    .as.block_stmt.block_kind = state.as.block_stmt.block_kind,
+    .as.block_stmt.stmt_count = state.as.block_stmt.stmt_count + 1
+  });
 
   switch (peek(context).kind) {
     default:
@@ -245,7 +265,7 @@ static bool handle_BLOCK_STMT(Context* context, ParseState state) {
       break;
 
     case '{':
-      push_state(context, (ParseState) { .kind=STATE_BLOCK });
+      push_generic_block_state(context);
       break;
     
     case TOKEN_KEYWORD_IF:
@@ -289,7 +309,7 @@ static bool handle_IF(Context* context, ParseState state) {
   });
 
   push_state(context, (ParseState){.kind=STATE_ELSE});
-  push_state(context, (ParseState){.kind=STATE_BLOCK});
+  push_generic_block_state(context);
   push_state(context, (ParseState){.kind=STATE_EXPR});
 
   return true;
@@ -312,7 +332,7 @@ static bool handle_ELSE(Context* context, ParseState state) {
       push_state(context, (ParseState){.kind=STATE_IF});
     }
     else {
-      push_state(context, (ParseState){.kind=STATE_BLOCK});
+      push_generic_block_state(context);
     }
   }
 
@@ -332,7 +352,7 @@ static bool handle_WHILE(Context* context, ParseState state) {
     .as.accept.num_children = 2
   });
 
-  push_state(context, (ParseState) {.kind=STATE_BLOCK});
+  push_generic_block_state(context);
   push_state(context, (ParseState) {.kind=STATE_EXPR});
 
   return true;
@@ -409,14 +429,8 @@ static bool handle_FN(Context* context, ParseState state) {
   Token token = peek(context);
   REQUIRE(context, TOKEN_KEYWORD_FN, "expected a function 'fn'");
 
-  push_state(context, (ParseState){
-    .kind = STATE_ACCEPT,
-    .as.accept.kind = PARSE_NODE_FN,
-    .as.accept.token = token,
-    .as.accept.num_children = 1
-  });
-
-  push_state(context, (ParseState){ .kind = STATE_BLOCK });
+  new_node(context, PARSE_NODE_FN_INTRODUCER, token, 0);
+  push_block_state(context, 1, PARSE_NODE_FN_DEF);
 
   return true;
 }

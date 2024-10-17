@@ -57,7 +57,7 @@ static Item make_item(Arena* arena, int tree_count, uint64_t* prev_last_child, i
 static void print_indentation(uint64_t* last_child, int depth) {
   for (int i = 1; i < depth+1; ++i) {
     if (bitset_query(last_child, i)) {
-      printf("%c", i == depth ? 192 : ' ');
+      printf("%c", i == depth ? 218 : ' ');
     }
     else {
       printf("%c", i == depth ? 195 : 179);
@@ -103,7 +103,7 @@ void dump_parse_tree(ParseTree tree) {
     data[node - tree.nodes] = item;
   }
 
-  for_range_rev(int, i, tree.num_nodes) {
+  for_range(int, i, tree.num_nodes) {
     Item item = data[i];
     ParseNode* node = &tree.nodes[i];
     print_indentation(item.last_child, item.depth);
