@@ -24,6 +24,8 @@ static int identifier_kind(char* start, char* end) {
       return check_keyword(start, end, "while", TOKEN_KEYWORD_WHILE);
     case 'r':
       return check_keyword(start, end, "return", TOKEN_KEYWORD_RETURN);
+    case 'f':
+      return check_keyword(start, end, "fn", TOKEN_KEYWORD_FN);
   }
 }
 

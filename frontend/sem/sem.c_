@@ -1,0 +1,93 @@
+#include "frontend.h"
+
+typedef struct {
+  Arena* arena;
+  SemInstr** map;
+  ParseTree tree;
+  SemInstr* cur;
+} Context;
+
+static SemInstr* new_instr(Context* context, SemOp op) {
+  SemInstr* instr = arena_type(context->arena, SemInstr);
+  instr->op = op;
+
+  context->cur = context->cur->next = instr;
+
+  return instr;
+}
+
+#define UNDEFINED_GEN(name) \
+  static SemInstr* gen_##name(Context* context, ParseNode* node) { \
+    (void)context; (void)node; \
+    return NULL; \
+  }
+
+static SemInstr* gen_INTEGER_LITERAL(Context* context, ParseNode* node) {
+  uint64_t value = 0;
+
+  for_range (int, i, node->token.length) {
+    value *= 10;
+    value += node->token.start[i] - '0';
+  }
+
+  SemInstr* instr = new_instr(context, SEM_OP_INTEGER_CONSTANT);
+  instr->as.int_const = value;
+
+  return instr;
+}
+
+static SemInstr* gen_binary(Context* context, ParseNode* node, SemOp op) {
+  SemInstr* instr = new_instr(context, op);
+  get_children(context, instr->as.bin, node);
+
+  return instr;
+}
+
+static SemInstr* gen_ADD(Context* context, ParseNode* node) {
+  return gen_binary(context, node, SEM_OP_ADD);
+}
+
+static SemInstr* gen_SUB(Context* context, ParseNode* node) {
+  return gen_binary(context, node, SEM_OP_SUB);
+}
+
+static SemInstr* gen_MUL(Context* context, ParseNode* node) {
+  return gen_binary(context, node, SEM_OP_MUL);
+}
+
+static SemInstr* gen_DIV(Context* context, ParseNode* node) {
+  return gen_binary(context, node, SEM_OP_DIV);
+}
+
+UNDEFINED_GEN(BLOCK_OPEN);
+
+static SemInstr* gen_BLOCK(Context* context, ParseNode* node) {
+  SemInstr* tail = {0};
+  SemInstr* head = &tail;
+
+  foreach_parse_node_child(node, child) {
+    SemInstr* n = 
+  }
+}
+
+SemFunction* sem_generate(Arena* arena, ParseTree parse_tree) {
+  Scratch scratch = global_scratch(1, &arena);
+
+  SemInstr** map = arena_array(scratch.arena, SemInstr*, parse_tree.num_nodes);
+
+  foreach_parse_tree_node(parse_tree, node) {
+    SemInstr* instr = arena_type(arena, SemInstr);
+    int index = (int)(node - parse_tree.nodes);
+
+    #define X(name, ...) case PARSE_NODE_##name: map[index] = gen_##name(node); break;
+    switch (instr->op) {
+      default:
+        assert(false);
+        break;
+      #include "parser/parse_node_kind.def"
+    }
+    #undef X
+  }
+
+  return NULL;
+}

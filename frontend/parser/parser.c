@@ -16,7 +16,6 @@ typedef struct {
     struct { int prec; } binary_infix;
     struct { Token op; int prec; } binary_accept;
     struct { int stmt_count; } block_stmt;
-    struct { bool require_semicolon; int stmt_count; } block_stmt_accept;
     struct { Token token; ParseNodeKind kind; int num_children; } accept;
   } as;
 } ParseState;
@@ -227,68 +226,51 @@ static bool handle_BLOCK_STMT(Context* context, ParseState state) {
     return true;
   }
 
-  bool require_semicolon = false;
-  ParseState stmt_state = {0};
+  push_state(context, (ParseState){.kind=STATE_BLOCK_STMT, .as.block_stmt.stmt_count = state.as.block_stmt.stmt_count + 1});
 
   switch (peek(context).kind) {
     default:
-      require_semicolon = true;
-      stmt_state = (ParseState) { .kind = STATE_EXPR };
+      push_state(context, (ParseState) { .kind=STATE_EXPR_STMT_ACCEPT });
+      push_state(context, (ParseState) { .kind=STATE_EXPR });
       break;
 
     case TOKEN_IDENTIFIER:
-      require_semicolon = true;
       if (peekn(context, 1).kind == ':') {
-        stmt_state = (ParseState) { .kind = STATE_LOCAL_DECL };
+        push_state(context, (ParseState){.kind=STATE_LOCAL_DECL});
       }
       else {
-        stmt_state = (ParseState) { .kind = STATE_EXPR };
+        push_state(context, (ParseState) { .kind=STATE_EXPR_STMT_ACCEPT });
+        push_state(context, (ParseState) { .kind=STATE_EXPR });
       }
       break;
 
     case '{':
-      stmt_state = (ParseState) { .kind = STATE_BLOCK };
+      push_state(context, (ParseState) { .kind=STATE_BLOCK });
       break;
     
     case TOKEN_KEYWORD_IF:
-      stmt_state = (ParseState) { .kind = STATE_IF };
+      push_state(context, (ParseState) { .kind=STATE_IF });
       break;
 
     case TOKEN_KEYWORD_WHILE:
-      stmt_state = (ParseState) { .kind = STATE_WHILE };
+      push_state(context, (ParseState) { .kind=STATE_WHILE });
       break;
 
     case TOKEN_KEYWORD_RETURN:
-      require_semicolon = true;
-      stmt_state = (ParseState) { .kind = STATE_RETURN };
+      push_state(context, (ParseState) { .kind=STATE_RETURN });
       break;
   }
-
-  push_state(context, (ParseState) {
-    .kind = STATE_BLOCK_STMT_ACCEPT,
-    .as.block_stmt_accept.require_semicolon = require_semicolon,
-    .as.block_stmt_accept.stmt_count = state.as.block_stmt.stmt_count + 1
-  });
-
-  push_state(context, stmt_state);
 
   return true;
 }
 
-static bool handle_BLOCK_STMT_ACCEPT(Context* context, ParseState state) {
+static bool handle_EXPR_STMT_ACCEPT(Context* context, ParseState state) {
   (void)state;
 
-  if (state.as.block_stmt_accept.require_semicolon) {
-    Token semi = peek(context);
-    REQUIRE(context, ';', "expected a semi-colon ';'");
+  Token semi = peek(context);
+  REQUIRE(context, ';', "expected a semi-colon ';'");
 
-    new_node(context, PARSE_NODE_SEMICOLON_STATEMENT, semi, 1);
-  }
-
-  push_state(context, (ParseState){
-    .kind = STATE_BLOCK_STMT,
-    .as.block_stmt.stmt_count = state.as.block_stmt_accept.stmt_count
-  });
+  new_node(context, PARSE_NODE_EXPR_STATEMENT, semi, 1);
 
   return true;
 }
@@ -369,6 +351,8 @@ static bool handle_LOCAL_DECL(Context* context, ParseState state) {
   REQUIRE(context, TOKEN_IDENTIFIER, "expected a type name");
 
   new_node(context, PARSE_NODE_LOCAL_DECL, colon, 2);
+  
+  push_state(context, (ParseState){.kind=STATE_LOCAL_DECL_ACCEPT});
 
   if (peek(context).kind == '=') {
     push_state(context, (ParseState) {
@@ -380,20 +364,59 @@ static bool handle_LOCAL_DECL(Context* context, ParseState state) {
   return true;
 }
 
+static bool handle_LOCAL_DECL_ACCEPT(Context* context, ParseState state) {
+  (void)state;
+
+  Token token = peek(context);
+  REQUIRE(context, ';', "terminate local declaration with ';'");
+
+  new_node(context, PARSE_NODE_LOCAL_DECL_STATEMENT, token, 1);
+
+  return true;
+}
+
 static bool handle_RETURN(Context* context, ParseState state) {
   (void)state;
 
   Token token = peek(context);
   REQUIRE(context, TOKEN_KEYWORD_RETURN, "expected a 'return' statement");
 
+  new_node(context, PARSE_NODE_RETURN_STATEMENT_START, token, 0);
+
   push_state(context, (ParseState) {
-    .kind = STATE_ACCEPT,
-    .as.accept.token = token,
-    .as.accept.kind = PARSE_NODE_RETURN,
-    .as.accept.num_children = 1
+    .kind = STATE_RETURN_ACCEPT,
   });
 
   push_state(context, (ParseState) {.kind=STATE_EXPR});
+
+  return true;
+}
+
+static bool handle_RETURN_ACCEPT(Context* context, ParseState state) {
+  (void)state;
+
+  Token token = peek(context);
+  REQUIRE(context, ';', "terminate return statement with ';'");
+
+  new_node(context, PARSE_NODE_RETURN_STATEMENT, token, 2);
+
+  return true;
+}
+
+static bool handle_FN(Context* context, ParseState state) {
+  (void)state;
+
+  Token token = peek(context);
+  REQUIRE(context, TOKEN_KEYWORD_FN, "expected a function 'fn'");
+
+  push_state(context, (ParseState){
+    .kind = STATE_ACCEPT,
+    .as.accept.kind = PARSE_NODE_FN,
+    .as.accept.token = token,
+    .as.accept.num_children = 1
+  });
+
+  push_state(context, (ParseState){ .kind = STATE_BLOCK });
 
   return true;
 }
@@ -423,7 +446,7 @@ bool parse(Arena* arena, SourceContents source, TokenizedBuffer tokens, ParseTre
     .node_capacity = tokens.length-1
   };
 
-  push_state(&context, (ParseState){.kind = STATE_BLOCK});
+  push_state(&context, (ParseState){.kind = STATE_FN});
 
   while (dynamic_array_length(context.state_stack)) {
     ParseState state = dynamic_array_pop(context.state_stack);

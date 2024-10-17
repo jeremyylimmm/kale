@@ -17,6 +17,7 @@ enum {
   TOKEN_KEYWORD_ELSE,
   TOKEN_KEYWORD_WHILE,
   TOKEN_KEYWORD_RETURN,
+  TOKEN_KEYWORD_FN,
 
   NUM_TOKEN_KINDS
 };
@@ -47,8 +48,6 @@ static char* parse_node_debug_name[NUM_PARSE_NODE_KINDS] = {
   #include "parser/parse_node_kind.def"
 };
 #undef X
-
-#define PARSE_NODE_INLINE_CHILD_CAPACITY 4
 
 typedef struct ParseNode ParseNode;
 struct ParseNode {
@@ -137,7 +136,7 @@ void parse_node_children_next(ParseNodeChildrenIterator* it);
   )
 
 void dump_parse_tree(ParseTree tree);
-#define PARSE_TREE_POSTORDER_ITER(tree, it) for (ParseNode* it = (tree).nodes; it != (tree).nodes + (tree).num_nodes; ++it)
+#define foreach_parse_tree_node(tree, it) for (ParseNode* it = (tree).nodes; it != (tree).nodes + (tree).num_nodes; ++it)
 
 void error_at_token(char* source_path, char* source, Token token, char* fmt, ...);
 

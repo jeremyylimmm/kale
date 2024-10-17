@@ -1,3 +1,4 @@
+X(IDENTIFIER, "identifier")
 
 X(INTEGER_LITERAL, "int_lit")
 
@@ -6,18 +7,22 @@ X(SUB, "sub")
 X(MUL, "mul")
 X(DIV, "div")
 
+X(ASSIGN, "assign")
+
 X(BLOCK_OPEN, "block_open")
 X(BLOCK, "block")
 
-X(SEMICOLON_STATEMENT, "semi_stmt")
+X(EXPR_STATEMENT, "expr_stmt")
 
 X(IF, "if")
 X(ELSE, "else")
-
 X(WHILE, "while")
 
 X(LOCAL_DECL, "local_decl")
-X(IDENTIFIER, "identifier")
+X(LOCAL_DECL_STATEMENT, "local_decl_stmt")
 
-X(ASSIGN, "assign")
-X(RETURN, "return")
+
+X(RETURN_STATEMENT_START, "return_start")
+X(RETURN_STATEMENT, "return_stmt")
+
+X(FN, "fn")
