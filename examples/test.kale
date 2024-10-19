@@ -3,7 +3,11 @@ fn {
   dingle: int = 3;
   1;
 
-  if 1 {
+  //if 1 {
+  //  2;
+  //}
+
+  while 1 {
     2;
   }
 
