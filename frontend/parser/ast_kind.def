@@ -1,9 +1,14 @@
 X(INT_LITERAL, "int_lit")
+X(IDENTIFIER, "ident")
+X(LOCAL, "local")
 
 X(ADD, "add")
 X(SUB, "sub")
 X(MUL, "mul")
 X(DIV, "div")
+
+X(ASSIGN, "assign")
+X(INITIALIZE, "init")
 
 X(BLOCK, "block")
 X(RETURN, "ret")

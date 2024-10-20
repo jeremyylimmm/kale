@@ -144,6 +144,9 @@ static bool do_PRIMARY(Parser* p) {
     case TOKEN_INTEGER_LITERAL:
       new_leaf(p, AST_INT_LITERAL, lex(p));
       return true;
+    case TOKEN_IDENTIFIER:
+      new_leaf(p, AST_IDENTIFIER, lex(p));
+      return true;
   }
 }
 
@@ -158,7 +161,7 @@ static bool do_BINARY(Parser* p) {
   return true;
 }
 
-static int binary_prec(Token op) {
+static int binary_prec(Token op, bool caller) {
   switch (op.kind) {
     default:
       return 0;
@@ -168,6 +171,8 @@ static int binary_prec(Token op) {
     case '+':
     case '-':
       return 10;
+    case '=':
+      return 5 - (caller ? 1 : 0); // Right recursive
   }
 }
 
@@ -184,6 +189,8 @@ static ASTKind binary_kind(Token op) {
       return AST_ADD;
     case '-':
       return AST_SUB;
+    case '=':
+      return AST_ASSIGN;
   }
 }
 
@@ -194,7 +201,7 @@ static bool do_BINARY_INFIX(Parser* p) {
     new_node(p, binary_kind(op), op, 2);
   }
 
-  if (binary_prec(peek(p)) > p->state.as.bin_infix.cur_prec) {
+  if (binary_prec(peek(p), false) > p->state.as.bin_infix.cur_prec) {
     Token next_op = lex(p);
 
     push(p, (State) {
@@ -205,10 +212,15 @@ static bool do_BINARY_INFIX(Parser* p) {
 
     push(p, (State) {
       .kind = STATE_BINARY,
-      .as.bin.cur_prec = binary_prec(next_op)
+      .as.bin.cur_prec = binary_prec(next_op, true)
     });
   }
 
+  return true;
+}
+
+static bool do_COMPLETE(Parser* p) {
+  new_node(p, p->state.as.complete.kind, p->state.as.complete.token, p->state.as.complete.num_children);
   return true;
 }
 
@@ -254,6 +266,17 @@ static bool do_BLOCK_STMT(Parser* p) {
     default:
       push(p, basic_state(STATE_SEMI));
       push(p, basic_state(STATE_EXPR));
+      break;
+
+    case TOKEN_IDENTIFIER:
+      push(p, basic_state(STATE_SEMI));
+
+      if (peekn(p, 1).kind == ':') {
+        push(p, basic_state(STATE_LOCAL));
+      }
+      else {
+        push(p, basic_state(STATE_EXPR));
+      }
       break;
 
     case '{':
@@ -337,8 +360,27 @@ static bool do_SEMI(Parser* p) {
   return true;
 }
 
-static bool do_COMPLETE(Parser* p) {
-  new_node(p, p->state.as.complete.kind, p->state.as.complete.token, p->state.as.complete.num_children);
+static bool do_LOCAL(Parser* p) {
+  Token name_tok = peek(p);
+  REQUIRE(p, TOKEN_IDENTIFIER, "expected a local declaration, so expected a name here");
+
+  Token colon_tok = peek(p);
+  REQUIRE(p, ':', "expected a local declaration, so expected a ':' here");
+
+  Token type_tok = peek(p);
+  REQUIRE(p, TOKEN_IDENTIFIER, "expected a local declaration, so expected a typename here");
+
+  new_leaf(p, AST_IDENTIFIER, name_tok);
+  new_leaf(p, AST_IDENTIFIER, type_tok);
+
+  new_node(p, AST_LOCAL, colon_tok, 2);
+
+  if (peek(p).kind == '=') {
+    Token equal_tok = lex(p);
+    push(p, complete(AST_INITIALIZE, equal_tok, 2));
+    push(p, basic_state(STATE_EXPR));
+  }
+
   return true;
 }
 
