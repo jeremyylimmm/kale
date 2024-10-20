@@ -342,7 +342,7 @@ bool allocator_tests(ScratchLibrary* scratch_lib) {
   mapping(0b1010010, &f, &s);
   ASSERT(f == 6 && s == 0b0100, "mapping bug");
 
-  Allocator* a = new_allocator(scratch.arena); 
+  Allocator* a = scratch.allocator; 
 
   uint64_t block_size = align_amount(10 * 1024 * 1024);
   allocator_free(a, allocator_alloc(a, block_size));

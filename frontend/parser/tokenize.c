@@ -35,9 +35,8 @@ static int isident(int c) {
 
 TokenizedBuffer tokenize(Arena* arena, SourceContents source) {
   Scratch scratch = global_scratch(1, &arena);
-  Allocator* scratch_allocator = new_allocator(scratch.arena);
 
-  DynamicArray(Token) tokens = new_dynamic_array(scratch_allocator);
+  DynamicArray(Token) tokens = new_dynamic_array(scratch.allocator);
 
   char* cur_char = source.contents;
   int cur_line = 1;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "utils.h"
+#include "dynamic_array.h"
 
 typedef struct {
   char* contents;
@@ -66,6 +67,44 @@ typedef struct {
   int index;
 } ASTChildIterator;
 
+#define X(name, ...) SEM_NODE_##name,
+typedef enum {
+  SEM_NODE_INVALID,
+  #include "sem/node.def"
+} SemNodeKind;
+#undef X
+
+
+typedef struct SemNode SemNode;
+typedef struct SemBlock SemBlock;
+
+typedef uint32_t SemValue;
+
+#define SEM_MAX_INS 4
+
+struct SemNode {
+  SemNodeKind kind;
+  SemValue def;
+
+  int num_ins;
+  SemValue ins[SEM_MAX_INS];
+
+  void* data;
+};
+
+struct SemBlock {
+  DynamicArray(SemNode) nodes;
+};
+
+typedef struct {
+  DynamicArray(SemBlock) blocks;
+} SemFunc;
+
+typedef struct {
+  Arena* arena;
+  Allocator* allocator;
+} SemContext;
+
 SourceContents load_source(Arena* arena, char* path);
 
 TokenizedBuffer tokenize(Arena* arena, SourceContents source);
@@ -80,3 +119,13 @@ bool ast_children_check(ASTChildIterator* it);
 void ast_children_next(ASTChildIterator* it);
 
 #define foreach_ast_child(node, it) for (ASTChildIterator it = ast_children_begin(node); ast_children_check(&it); ast_children_next(&it))
+
+typedef struct {
+  int count;
+  AST** nodes;
+} ASTRoots;
+
+ASTRoots ast_get_roots(Arena* arena, ASTBuffer* ast_buffer);
+
+SemContext* sem_init(Arena* arena);
+SemFunc* sem_translate(SemContext* context, ASTBuffer* ast_buffer);

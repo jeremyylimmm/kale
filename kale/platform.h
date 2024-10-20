@@ -17,6 +17,7 @@ typedef struct ScratchLibrary ScratchLibrary;
 
 typedef struct {
   Arena* arena;
+  struct Allocator* allocator;
   void* impl;
 } Scratch;
 

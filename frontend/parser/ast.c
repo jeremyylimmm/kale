@@ -24,20 +24,45 @@ static IndentedItem indented_item(Arena* arena, int depth, uint64_t* parent_firs
   };
 }
 
-void ast_dump(ASTBuffer* ast_buffer) {
-  Scratch scratch = global_scratch(0, NULL);
-  Allocator* scratch_allocator = new_allocator(scratch.arena);
+ASTRoots ast_get_roots(Arena* arena, ASTBuffer* ast_buffer) {
+  Scratch scratch = global_scratch(1, &arena);
+  Allocator* allocator = new_allocator(scratch.arena);
 
-  DynamicArray(IndentedItem) stack = new_dynamic_array(scratch_allocator);
-  IndentedItem* data = arena_array(scratch.arena, IndentedItem, ast_buffer->count);
-
-  // Gather all roots
+  DynamicArray(AST*) v = new_dynamic_array(allocator);
+  
   for (
     int cur = ast_buffer->count-1;
     cur >= 0;
     cur -= ast_buffer->nodes[cur].subtree_size
   ) {
-    dynamic_array_put(stack, indented_item(scratch.arena, 0, NULL, true, &ast_buffer->nodes[cur]));
+    dynamic_array_put(v, &ast_buffer->nodes[cur]);
+  }
+
+  ASTRoots roots = {
+    .count = dynamic_array_length(v),
+    .nodes = arena_array(arena, AST*, dynamic_array_length(v))
+  };
+
+  for_range (int, i, roots.count) {
+    roots.nodes[roots.count-1-i] = v[i];
+  }
+
+  scratch_release(&scratch);
+
+  return roots;
+}
+
+void ast_dump(ASTBuffer* ast_buffer) {
+  Scratch scratch = global_scratch(0, NULL);
+
+  DynamicArray(IndentedItem) stack = new_dynamic_array(scratch.allocator);
+  IndentedItem* data = arena_array(scratch.arena, IndentedItem, ast_buffer->count);
+
+  ASTRoots roots = ast_get_roots(scratch.arena, ast_buffer);
+
+  // Gather all roots
+  for_range (int, i, roots.count) {
+    dynamic_array_put(stack, indented_item(scratch.arena, 0, NULL, true, roots.nodes[i]));
   }
 
   while (dynamic_array_length(stack)) {

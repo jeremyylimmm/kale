@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 #include "base.h"
+#include "allocator.h"
 
 #define ARENA_CAPACITY ((size_t)5 * 1024 * 1024 * 1024)
 
@@ -126,6 +127,7 @@ Scratch scratch_get(ScratchLibrary* lib, int num_conflicts, Arena** conflicts) {
 
       return (Scratch) {
         .arena = arena,
+        .allocator = new_allocator(arena),
         .impl = impl
       };
     }

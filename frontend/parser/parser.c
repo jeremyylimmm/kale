@@ -388,15 +388,14 @@ static bool do_LOCAL(Parser* p) {
 
 ASTBuffer* parse(Arena* arena, SourceContents source, TokenizedBuffer* tokens) {
   Scratch scratch = global_scratch(1, &arena);
-  Allocator* scratch_allocator = new_allocator(scratch.arena);
 
   ASTBuffer* ast_buffer = NULL;
 
   Parser p = {
     .source = source,
     .token_buffer = tokens,
-    .nodes = new_dynamic_array(scratch_allocator),
-    .stack = new_dynamic_array(scratch_allocator)
+    .nodes = new_dynamic_array(scratch.allocator),
+    .stack = new_dynamic_array(scratch.allocator)
   };
 
   push(&p, basic_state(STATE_BLOCK));
