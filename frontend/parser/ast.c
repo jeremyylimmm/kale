@@ -26,9 +26,8 @@ static IndentedItem indented_item(Arena* arena, int depth, uint64_t* parent_firs
 
 ASTRoots ast_get_roots(Arena* arena, ASTBuffer* ast_buffer) {
   Scratch scratch = global_scratch(1, &arena);
-  Allocator* allocator = new_allocator(scratch.arena);
 
-  DynamicArray(AST*) v = new_dynamic_array(allocator);
+  DynamicArray(AST*) v = new_dynamic_array(scratch.allocator);
   
   for (
     int cur = ast_buffer->count-1;
