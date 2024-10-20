@@ -332,24 +332,26 @@ static bool do_IF(Parser* p) {
 }
 
 static bool do_ELSE(Parser* p) {
-  push(p, complete(AST_IF, p->state.as.els.if_token, 2));
 
   if (peek(p).kind == TOKEN_KEYWORD_ELSE) {
-    Token else_tok = lex(p);
+    lex(p);
+
+    push(p, complete(AST_IF, p->state.as.els.if_token, 3));
 
     switch (peek(p).kind) {
       default:
         error_at_token(p->source, peek(p), "only an if statement or a '{}' block can follow an else statement");
         return false;
       case '{':
-        push(p, complete(AST_ELSE, else_tok, 2));
         push(p, basic_state(STATE_BLOCK));
         break;
       case TOKEN_KEYWORD_IF:
-        push(p, complete(AST_ELSE, else_tok, 2));
         push(p, basic_state(STATE_IF));
         break;
     }
+  }
+  else {
+    push(p, complete(AST_IF, p->state.as.els.if_token, 2));
   }
 
   return true;
