@@ -1,6 +1,12 @@
-X(INT_LITERAL, "int_literal")
+X(INT_LITERAL, "int_lit")
 
 X(ADD, "add")
 X(SUB, "sub")
 X(MUL, "mul")
 X(DIV, "div")
+
+X(BLOCK, "block")
+X(RETURN, "ret")
+X(WHILE, "while")
+X(IF, "if")
+X(ELSE, "else")

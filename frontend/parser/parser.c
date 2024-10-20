@@ -16,9 +16,25 @@ typedef struct {
       int cur_prec;
       Token op;
     } bin_infix;
+
     struct {
       int cur_prec;
     } bin;
+
+    struct {
+      Token lbrace;
+      int count;
+    } block_stmt;
+
+    struct {
+      ASTKind kind;
+      Token token;
+      int num_children;
+    } complete;
+
+    struct {
+      Token if_token;
+    } els;
   } as;
 } State;
 
@@ -58,9 +74,35 @@ static Token lex(Parser* p) {
   return tok;
 }
 
+static bool match(Parser* p, int token_kind, char* message) {
+  if (peek(p).kind != token_kind) {
+    error_at_token(p->source, peek(p), message);
+    return false;
+  }
+
+  lex(p);
+  return true;
+}
+
+#define REQUIRE(p, token_kind, message) \
+  do { \
+    if (!match(p, token_kind, message)) { \
+      return false; \
+    } \
+  } while (false)
+
 static State basic_state(StateKind kind) {
   return (State) {
     .kind = kind
+  };
+}
+
+static State complete(ASTKind kind, Token token, int num_children) {
+  return (State) {
+    .kind = STATE_COMPLETE,
+    .as.complete.kind = kind,
+    .as.complete.token = token,
+    .as.complete.num_children = num_children
   };
 }
 
@@ -179,6 +221,127 @@ static bool do_EXPR(Parser* p) {
   return true;
 }
 
+static bool do_BLOCK(Parser* p) {
+  Token lbrace = peek(p);
+  REQUIRE(p, '{', "expected a block '{'");
+
+  push(p, (State) {
+    .kind = STATE_BLOCK_STMT,
+    .as.block_stmt.lbrace = lbrace
+  });
+  
+  return true;
+}
+
+static bool do_BLOCK_STMT(Parser* p) {
+  switch (peek(p).kind) {
+    case '}':
+      lex(p);
+      new_node(p, AST_BLOCK, p->state.as.block_stmt.lbrace, p->state.as.block_stmt.count);
+      return true;
+    case TOKEN_EOF:
+      error_at_token(p->source, p->state.as.block_stmt.lbrace, "this brace has no closing brace");
+      return false;
+  }
+
+  push(p, (State) {
+    .kind = STATE_BLOCK_STMT,
+    .as.block_stmt.lbrace = p->state.as.block_stmt.lbrace,
+    .as.block_stmt.count = p->state.as.block_stmt.count + 1,
+  });
+
+  switch (peek(p).kind) {
+    default:
+      push(p, basic_state(STATE_SEMI));
+      push(p, basic_state(STATE_EXPR));
+      break;
+
+    case '{':
+      push(p, basic_state(STATE_BLOCK));
+      break;
+
+    case TOKEN_KEYWORD_RETURN:
+      push(p, complete(AST_RETURN, lex(p), 1));
+      push(p, basic_state(STATE_SEMI));
+      push(p, basic_state(STATE_EXPR));
+      break;
+
+    case TOKEN_KEYWORD_WHILE:
+      push(p, basic_state(STATE_WHILE));
+      break;
+
+    case TOKEN_KEYWORD_IF:
+      push(p, basic_state(STATE_IF));
+      break;
+
+    case TOKEN_KEYWORD_ELSE:
+      error_at_token(p->source, peek(p), "an else statement must follow an if '{}' body");
+      return false;
+  }
+
+  return true;
+}
+
+static bool do_WHILE(Parser* p) {
+  Token while_tok = peek(p);
+  REQUIRE(p, TOKEN_KEYWORD_WHILE, "expected a 'while' loop");
+
+  push(p, complete(AST_WHILE, while_tok, 2));
+  push(p, basic_state(STATE_BLOCK));
+  push(p, basic_state(STATE_EXPR));
+
+  return true;
+}
+
+static bool do_IF(Parser* p) {
+  Token if_tok = peek(p);
+  REQUIRE(p, TOKEN_KEYWORD_IF, "expected a 'if' statement");
+
+  push(p, (State) {
+    .kind = STATE_ELSE,
+    .as.els.if_token = if_tok
+  });
+
+  push(p, basic_state(STATE_BLOCK));
+  push(p, basic_state(STATE_EXPR));
+
+  return true;
+}
+
+static bool do_ELSE(Parser* p) {
+  push(p, complete(AST_IF, p->state.as.els.if_token, 2));
+
+  if (peek(p).kind == TOKEN_KEYWORD_ELSE) {
+    Token else_tok = lex(p);
+
+    switch (peek(p).kind) {
+      default:
+        error_at_token(p->source, peek(p), "only an if statement or a '{}' block can follow an else statement");
+        return false;
+      case '{':
+        push(p, complete(AST_ELSE, else_tok, 2));
+        push(p, basic_state(STATE_BLOCK));
+        break;
+      case TOKEN_KEYWORD_IF:
+        push(p, complete(AST_ELSE, else_tok, 2));
+        push(p, basic_state(STATE_IF));
+        break;
+    }
+  }
+
+  return true;
+}
+
+static bool do_SEMI(Parser* p) {
+  REQUIRE(p, ';', "expected ';'");
+  return true;
+}
+
+static bool do_COMPLETE(Parser* p) {
+  new_node(p, p->state.as.complete.kind, p->state.as.complete.token, p->state.as.complete.num_children);
+  return true;
+}
+
 ASTBuffer* parse(Arena* arena, SourceContents source, TokenizedBuffer* tokens) {
   Scratch scratch = global_scratch(1, &arena);
   Allocator* scratch_allocator = new_allocator(scratch.arena);
@@ -192,7 +355,7 @@ ASTBuffer* parse(Arena* arena, SourceContents source, TokenizedBuffer* tokens) {
     .stack = new_dynamic_array(scratch_allocator)
   };
 
-  push(&p, basic_state(STATE_EXPR));
+  push(&p, basic_state(STATE_BLOCK));
 
   while (dynamic_array_length(p.stack)) {
     p.state = dynamic_array_pop(p.stack);
