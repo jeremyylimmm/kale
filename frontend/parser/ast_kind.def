@@ -1,0 +1,6 @@
+X(INT_LITERAL, "int_literal")
+
+X(ADD, "add")
+X(SUB, "sub")
+X(MUL, "mul")
+X(DIV, "div")

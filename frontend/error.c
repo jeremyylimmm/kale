@@ -27,12 +27,12 @@ static void find_line(char* source, int line, char** out_start, int* out_length)
   *out_length = length;
 }
 
-void error_at_token(char* source_path, char* source, Token token, char* fmt, ...) {
+void error_at_token(SourceContents source, Token token, char* fmt, ...) {
   char* line_start;
   int line_length;
-  find_line(source, token.line, &line_start, &line_length);
+  find_line(source.contents, token.line, &line_start, &line_length);
 
-  int offset = fprintf(stderr, "%s(%d): error: ", source_path, token.line);
+  int offset = fprintf(stderr, "%s(%d): error: ", source.path, token.line);
   fprintf(stderr, "%.*s\n", line_length, line_start);
 
   offset += (int)(token.start - line_start);

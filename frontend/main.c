@@ -17,7 +17,13 @@ int main() {
   char* source_path = "examples/test.kale";
   SourceContents source = load_source(arena, source_path);
   TokenizedBuffer tokens = tokenize(arena, source);
-  (void)tokens;
+
+  ASTBuffer* ast_buffer = parse(arena, source, &tokens);
+  if (!ast_buffer) {
+    return 1;
+  }
+
+  ast_dump(ast_buffer);
 
   return 0;
 }
