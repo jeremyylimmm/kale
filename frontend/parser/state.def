@@ -17,3 +17,7 @@ X(ELSE)
 X(SEMI)
 
 X(LOCAL)
+
+X(FN)
+
+X(TOP_LEVEL)

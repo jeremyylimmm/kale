@@ -386,6 +386,32 @@ static bool do_LOCAL(Parser* p) {
   return true;
 }
 
+static bool do_FN(Parser* p) {
+  Token fn_tok = peek(p);
+  REQUIRE(p, TOKEN_KEYWORD_FN, "expected a function");
+  push(p, complete(AST_FN, fn_tok, 1));
+  push(p, basic_state(STATE_BLOCK));
+  return true;
+}
+
+static bool do_TOP_LEVEL(Parser* p) {
+  if (peek(p).kind == TOKEN_EOF) {
+    return true;
+  }
+
+  push(p, basic_state(STATE_TOP_LEVEL));
+
+  switch (peek(p).kind) {
+    default:
+      error_at_token(p->source, peek(p), "expected a top-level statement; struct, fn, etc...");
+      return false;
+
+    case TOKEN_KEYWORD_FN:
+      push(p, basic_state(STATE_FN));
+      return true;
+  }
+}
+
 ASTBuffer* parse(Arena* arena, SourceContents source, TokenizedBuffer* tokens) {
   Scratch scratch = global_scratch(1, &arena);
 
@@ -398,7 +424,7 @@ ASTBuffer* parse(Arena* arena, SourceContents source, TokenizedBuffer* tokens) {
     .stack = new_dynamic_array(scratch.allocator)
   };
 
-  push(&p, basic_state(STATE_BLOCK));
+  push(&p, basic_state(STATE_TOP_LEVEL));
 
   while (dynamic_array_length(p.stack)) {
     p.state = dynamic_array_pop(p.stack);

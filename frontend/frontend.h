@@ -101,6 +101,10 @@ typedef struct {
 } SemFunc;
 
 typedef struct {
+  DynamicArray(SemFunc) funcs;
+} SemFile;
+
+typedef struct {
   Arena* arena;
   Allocator* allocator;
 } SemContext;
@@ -128,4 +132,4 @@ typedef struct {
 ASTRoots ast_get_roots(Arena* arena, ASTBuffer* ast_buffer);
 
 SemContext* sem_init(Arena* arena);
-SemFunc* sem_translate(SemContext* context, ASTBuffer* ast_buffer);
+SemFile* sem_translate(SemContext* context, ASTBuffer* ast_buffer);
