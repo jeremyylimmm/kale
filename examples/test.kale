@@ -1,25 +1,5 @@
 fn {
-  x: int = 59;
-  y: int;
-
-  x = y = 4;
-
-  15 * 4 + 45 / 15 * 4 - 3;
-
-  if 1 {
-    1;
-  }
-  else if 4 {
-    5;
-  }
-  else {
-    2;
-  }
-
-  if 1 {
-  }
-
-  return 20 * 21;
+  return 32 * 1;
 }
 
 fn {

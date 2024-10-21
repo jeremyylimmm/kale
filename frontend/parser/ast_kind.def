@@ -10,9 +10,12 @@ X(DIV, "div")
 X(ASSIGN, "assign")
 X(INITIALIZE, "init")
 
+X(BLOCK_INTRODUCER, "block_intro")
 X(BLOCK, "block")
 X(RETURN, "ret")
 X(WHILE, "while")
 X(IF, "if")
+X(ELSE, "else")
 
+X(FN_INTRODUCER, "fn_intro")
 X(FN, "fn")

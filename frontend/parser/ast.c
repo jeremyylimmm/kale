@@ -99,6 +99,8 @@ void ast_dump(ASTBuffer* ast_buffer) {
     printf("%s: '%.*s'\n", ast_kind_string[node->kind], node->token.length, node->token.start);
   }
 
+  printf("\n");
+
   scratch_release(&scratch);
 }
 

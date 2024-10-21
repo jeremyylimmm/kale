@@ -14,3 +14,4 @@ X(STORE, "store")
 
 X(GOTO, "goto")
 X(BRANCH, "branch")
+X(RETURN, "ret")

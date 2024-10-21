@@ -23,7 +23,6 @@ typedef struct {
 
     struct {
       Token lbrace;
-      int count;
     } block_stmt;
 
     struct {
@@ -31,10 +30,6 @@ typedef struct {
       Token token;
       int num_children;
     } complete;
-
-    struct {
-      Token if_token;
-    } els;
   } as;
 } State;
 
@@ -110,26 +105,50 @@ static void push(Parser* p, State state) {
   dynamic_array_put(p->stack, state);
 }
 
+static AST init_new_node(Token token, ASTKind kind, int num_children) {
+  return (AST) {
+    .token = token,
+    .kind = kind,
+    .num_children = num_children,
+    .subtree_size = 1
+  };
+}
+
 static void new_node(Parser* p, ASTKind kind, Token token, int num_children) {
-  int subtree_size = 1;
+  AST node = init_new_node(token, kind, num_children);
+
   int child = dynamic_array_length(p->nodes)-1;
 
   for_range_rev (int, i, num_children) {
     assert(child >= 0);
     AST* n = &p->nodes[child];
 
-    subtree_size += n->subtree_size;
+    node.subtree_size += n->subtree_size;
     child -= n->subtree_size;
   }
 
-  AST node = {
-    .token = token,
-    .kind = kind,
-    .num_children = num_children,
-    .subtree_size = subtree_size
-  };
-
   dynamic_array_put(p->nodes, node); 
+}
+
+static void new_node_bracketed(Parser* p, ASTKind kind, Token token, ASTKind bracket_kind) {
+  AST node = init_new_node(token, kind, 0);
+
+  int child = dynamic_array_length(p->nodes)-1;
+
+  while (true) {
+    assert(child >= 0);
+    AST* n = &p->nodes[child];
+
+    node.subtree_size += n->subtree_size;
+    child -= n->subtree_size;
+    node.num_children++;
+
+    if (n->kind == bracket_kind) {
+      break;
+    }
+  }
+
+  dynamic_array_put(p->nodes, node);
 }
 
 static void new_leaf(Parser* p, ASTKind kind, Token token) {
@@ -237,7 +256,8 @@ static bool do_BLOCK(Parser* p) {
   Token lbrace = peek(p);
   REQUIRE(p, '{', "expected a block '{'");
 
-  push(p, (State) {
+  new_leaf(p, AST_BLOCK_INTRODUCER, lbrace);
+  push(p, (State){
     .kind = STATE_BLOCK_STMT,
     .as.block_stmt.lbrace = lbrace
   });
@@ -248,8 +268,7 @@ static bool do_BLOCK(Parser* p) {
 static bool do_BLOCK_STMT(Parser* p) {
   switch (peek(p).kind) {
     case '}':
-      lex(p);
-      new_node(p, AST_BLOCK, p->state.as.block_stmt.lbrace, p->state.as.block_stmt.count);
+      new_node_bracketed(p, AST_BLOCK, lex(p), AST_BLOCK_INTRODUCER);
       return true;
     case TOKEN_EOF:
       error_at_token(p->source, p->state.as.block_stmt.lbrace, "this brace has no closing brace");
@@ -259,7 +278,6 @@ static bool do_BLOCK_STMT(Parser* p) {
   push(p, (State) {
     .kind = STATE_BLOCK_STMT,
     .as.block_stmt.lbrace = p->state.as.block_stmt.lbrace,
-    .as.block_stmt.count = p->state.as.block_stmt.count + 1,
   });
 
   switch (peek(p).kind) {
@@ -320,12 +338,9 @@ static bool do_IF(Parser* p) {
   Token if_tok = peek(p);
   REQUIRE(p, TOKEN_KEYWORD_IF, "expected a 'if' statement");
 
-  push(p, (State) {
-    .kind = STATE_ELSE,
-    .as.els.if_token = if_tok
-  });
-
+  push(p, basic_state(STATE_ELSE));
   push(p, basic_state(STATE_BLOCK));
+  push(p, complete(AST_IF, if_tok, 1));
   push(p, basic_state(STATE_EXPR));
 
   return true;
@@ -334,9 +349,7 @@ static bool do_IF(Parser* p) {
 static bool do_ELSE(Parser* p) {
 
   if (peek(p).kind == TOKEN_KEYWORD_ELSE) {
-    lex(p);
-
-    push(p, complete(AST_IF, p->state.as.els.if_token, 3));
+    new_leaf(p, AST_ELSE, lex(p));
 
     switch (peek(p).kind) {
       default:
@@ -349,9 +362,6 @@ static bool do_ELSE(Parser* p) {
         push(p, basic_state(STATE_IF));
         break;
     }
-  }
-  else {
-    push(p, complete(AST_IF, p->state.as.els.if_token, 2));
   }
 
   return true;
@@ -389,7 +399,8 @@ static bool do_LOCAL(Parser* p) {
 static bool do_FN(Parser* p) {
   Token fn_tok = peek(p);
   REQUIRE(p, TOKEN_KEYWORD_FN, "expected a function");
-  push(p, complete(AST_FN, fn_tok, 1));
+  new_leaf(p, AST_FN_INTRODUCER, fn_tok);
+  push(p, complete(AST_FN, fn_tok, 2));
   push(p, basic_state(STATE_BLOCK));
   return true;
 }

@@ -67,34 +67,37 @@ typedef struct {
   int index;
 } ASTChildIterator;
 
-#define X(name, ...) SEM_NODE_##name,
+#define X(name, ...) SEM_OP_##name,
 typedef enum {
-  SEM_NODE_INVALID,
-  #include "sem/node.def"
-} SemNodeKind;
+  SEM_OP_INVALID,
+  #include "sem/op.def"
+} SemOp;
 #undef X
 
-
-typedef struct SemNode SemNode;
-typedef struct SemBlock SemBlock;
+#define X(name, str, ...) str,
+static char* sem_op_str[] = {
+  "<INVALID>",
+  #include "sem/op.def"
+};
+#undef X
 
 typedef uint32_t SemValue;
 
 #define SEM_MAX_INS 4
 
-struct SemNode {
-  SemNodeKind kind;
+typedef struct {
+  SemOp op;
   SemValue def;
 
   int num_ins;
   SemValue ins[SEM_MAX_INS];
 
   void* data;
-};
+} SemInst;
 
-struct SemBlock {
-  DynamicArray(SemNode) nodes;
-};
+typedef struct {
+  DynamicArray(SemInst) insts;
+} SemBlock;
 
 typedef struct {
   DynamicArray(SemBlock) blocks;
@@ -133,3 +136,4 @@ ASTRoots ast_get_roots(Arena* arena, ASTBuffer* ast_buffer);
 
 SemContext* sem_init(Arena* arena);
 SemFile* sem_translate(SemContext* context, ASTBuffer* ast_buffer);
+void sem_dump(SemFile* file);

@@ -25,5 +25,9 @@ int main() {
 
   ast_dump(ast_buffer);
 
+  SemContext* sem = sem_init(arena);
+  SemFile* sem_file = sem_translate(sem, ast_buffer);
+  sem_dump(sem_file);
+
   return 0;
 }
