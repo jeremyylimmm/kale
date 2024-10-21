@@ -142,7 +142,7 @@ static bool translate_fn(SemContext* context, ASTBuffer* ast_buffer, int* cur, S
   return true;
 }
 
-SemFile* sem_translate(SemContext* context, ASTBuffer* ast_buffer) {
+SemFile* check_ast(SemContext* context, ASTBuffer* ast_buffer) {
   Scratch scratch = global_scratch(1, &context->arena);
 
   SemFile* return_value = NULL;

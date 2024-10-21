@@ -136,5 +136,5 @@ typedef struct {
 ASTRoots ast_get_roots(Arena* arena, ASTBuffer* ast_buffer);
 
 SemContext* sem_init(Arena* arena);
-SemFile* sem_translate(SemContext* context, ASTBuffer* ast_buffer);
+SemFile* check_ast(SemContext* context, ASTBuffer* ast_buffer);
 void sem_dump(SemFile* file);
