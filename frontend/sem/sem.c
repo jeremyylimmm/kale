@@ -37,6 +37,12 @@ void sem_dump(SemFile* file) {
           printf("%%%d", inst->ins[i]);
         }
 
+        switch (inst->op) {
+          case SEM_OP_INT_CONST:
+            printf("%llu", (uint64_t)inst->data);
+            break;
+        }
+
         printf("\n");
       }
     }
