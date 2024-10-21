@@ -38,6 +38,24 @@ static void expr(Translator* t, SemOp op, int num_ins, void* data) {
   inst(t, op, true, num_ins, data);
 }
 
+static AST* eat(ASTBuffer* ast_buffer, int* cur) {
+  assert((*cur) < ast_buffer->count);
+  AST* node = &ast_buffer->nodes[(*cur)++];
+  return node;
+}
+
+static String token_to_string(SemContext* context, Token token) {
+  char* buf = arena_push(context->arena, (token.length + 1) * sizeof(char));
+
+  memcpy(buf, token.start, token.length * sizeof(char));
+  buf[token.length] = '\0';
+
+  return (String) {
+    .str = buf,
+    .length = token.length
+  };
+}
+
 static bool translate_fn(SemContext* context, ASTBuffer* ast_buffer, int* cur, SemFunc* result) {
   Scratch scratch = global_scratch(1, &context->arena);
  
@@ -49,13 +67,13 @@ static bool translate_fn(SemContext* context, ASTBuffer* ast_buffer, int* cur, S
 
   dynamic_array_put(t.blocks, make_block(context));
 
-  assert(ast_buffer->nodes[*cur].kind == AST_FN_INTRODUCER);
+  eat(ast_buffer, cur); // fn introducer
 
-  (*cur)++;
-  assert(ast_buffer->nodes[*cur].kind == AST_BLOCK_INTRODUCER);
+  AST* name_node = eat(ast_buffer, cur);
+  assert(name_node->kind = AST_IDENTIFIER); 
 
   while ((*cur) < ast_buffer->count && ast_buffer->nodes[(*cur)].kind != AST_FN) {
-    AST* node = &ast_buffer->nodes[*cur];
+    AST* node = eat(ast_buffer, cur);
 
     switch (node->kind) {
       default:
@@ -111,14 +129,12 @@ static bool translate_fn(SemContext* context, ASTBuffer* ast_buffer, int* cur, S
         assert(false && "not implemented");
         break;
     }
-
-    (*cur)++;
   }
 
-  assert(ast_buffer->nodes[*cur].kind == AST_FN);
-  (*cur)++;
+  eat(ast_buffer, cur);
 
   *result = (SemFunc){
+    .name = token_to_string(context, name_node->token),
     .blocks = t.blocks
   };
 

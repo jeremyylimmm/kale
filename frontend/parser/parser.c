@@ -399,8 +399,14 @@ static bool do_LOCAL(Parser* p) {
 static bool do_FN(Parser* p) {
   Token fn_tok = peek(p);
   REQUIRE(p, TOKEN_KEYWORD_FN, "expected a function");
+
+  Token name_tok = peek(p);
+  REQUIRE(p, TOKEN_IDENTIFIER, "there must be a name after the 'fn' keyword");
+
   new_leaf(p, AST_FN_INTRODUCER, fn_tok);
-  push(p, complete(AST_FN, fn_tok, 2));
+  new_leaf(p, AST_IDENTIFIER, name_tok);
+
+  push(p, complete(AST_FN, fn_tok, 3));
   push(p, basic_state(STATE_BLOCK));
   return true;
 }

@@ -100,6 +100,7 @@ typedef struct {
 } SemBlock;
 
 typedef struct {
+  String name;
   DynamicArray(SemBlock) blocks;
 } SemFunc;
 
