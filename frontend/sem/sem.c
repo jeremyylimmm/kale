@@ -41,6 +41,16 @@ void sem_dump(SemFile* file) {
           case SEM_OP_INT_CONST:
             printf("%llu", (uint64_t)inst->data);
             break;
+
+          case SEM_OP_BRANCH: {
+            int* targs = (int*)inst->data;
+            printf(" [bb_%d:bb_%d]", targs[0], targs[1]);
+          } break;
+
+          case SEM_OP_GOTO: {
+            int* targs = (int*)inst->data;
+            printf("bb_%d", targs[0]);
+          } break;
         }
 
         printf("\n");

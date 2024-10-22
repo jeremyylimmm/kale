@@ -22,7 +22,12 @@ typedef struct {
     } bin;
 
     struct {
+      Token if_token;
+    } els;
+
+    struct {
       Token lbrace;
+      int num_children;
     } block_stmt;
 
     struct {
@@ -30,17 +35,22 @@ typedef struct {
       Token token;
       int num_children;
     } complete;
+
+    struct {
+      int count;
+    } top_level;
   } as;
 } State;
 
 typedef struct {
+  Arena* node_arena;
   SourceContents source;
 
   TokenizedBuffer* token_buffer;
   int cur_token;
 
-  DynamicArray(AST) nodes;
-  DynamicArray(State) stack;
+  DynamicArray(State) state_stack;
+  DynamicArray(AST*) node_stack;
 
   State state;
 } Parser;
@@ -101,54 +111,24 @@ static State complete(ASTKind kind, Token token, int num_children) {
   };
 }
 
-static void push(Parser* p, State state) {
-  dynamic_array_put(p->stack, state);
-}
-
-static AST init_new_node(Token token, ASTKind kind, int num_children) {
-  return (AST) {
-    .token = token,
-    .kind = kind,
-    .num_children = num_children,
-    .subtree_size = 1
-  };
+static void push_state(Parser* p, State state) {
+  dynamic_array_put(p->state_stack, state);
 }
 
 static void new_node(Parser* p, ASTKind kind, Token token, int num_children) {
-  AST node = init_new_node(token, kind, num_children);
+  AST* node = arena_type(p->node_arena, AST);
 
-  int child = dynamic_array_length(p->nodes)-1;
+  node->kind = kind;
+  node->token = token;
+  node->num_children = num_children;
 
-  for_range_rev (int, i, num_children) {
-    assert(child >= 0);
-    AST* n = &p->nodes[child];
+  node->children = arena_array(p->node_arena, AST*, num_children);
 
-    node.subtree_size += n->subtree_size;
-    child -= n->subtree_size;
+  for_range(int,i, num_children) {
+    node->children[num_children-1-i] = dynamic_array_pop(p->node_stack);
   }
 
-  dynamic_array_put(p->nodes, node); 
-}
-
-static void new_node_bracketed(Parser* p, ASTKind kind, Token token, ASTKind bracket_kind) {
-  AST node = init_new_node(token, kind, 0);
-
-  int child = dynamic_array_length(p->nodes)-1;
-
-  while (true) {
-    assert(child >= 0);
-    AST* n = &p->nodes[child];
-
-    node.subtree_size += n->subtree_size;
-    child -= n->subtree_size;
-    node.num_children++;
-
-    if (n->kind == bracket_kind) {
-      break;
-    }
-  }
-
-  dynamic_array_put(p->nodes, node);
+  dynamic_array_put(p->node_stack, node); 
 }
 
 static void new_leaf(Parser* p, ASTKind kind, Token token) {
@@ -170,12 +150,12 @@ static bool do_PRIMARY(Parser* p) {
 }
 
 static bool do_BINARY(Parser* p) {
-  push(p, (State) {
+  push_state(p, (State) {
     .kind = STATE_BINARY_INFIX,
     .as.bin_infix.cur_prec = p->state.as.bin.cur_prec
   });
 
-  push(p, basic_state(STATE_PRIMARY));
+  push_state(p, basic_state(STATE_PRIMARY));
 
   return true;
 }
@@ -223,13 +203,13 @@ static bool do_BINARY_INFIX(Parser* p) {
   if (binary_prec(peek(p), false) > p->state.as.bin_infix.cur_prec) {
     Token next_op = lex(p);
 
-    push(p, (State) {
+    push_state(p, (State) {
       .kind = STATE_BINARY_INFIX,
       .as.bin_infix.cur_prec = p->state.as.bin_infix.cur_prec,
       .as.bin_infix.op = next_op
     });
 
-    push(p, (State) {
+    push_state(p, (State) {
       .kind = STATE_BINARY,
       .as.bin.cur_prec = binary_prec(next_op, true)
     });
@@ -244,7 +224,7 @@ static bool do_COMPLETE(Parser* p) {
 }
 
 static bool do_EXPR(Parser* p) {
-  push(p, (State) {
+  push_state(p, (State) {
     .kind = STATE_BINARY,
     .as.bin.cur_prec = 0
   });
@@ -256,8 +236,7 @@ static bool do_BLOCK(Parser* p) {
   Token lbrace = peek(p);
   REQUIRE(p, '{', "expected a block '{'");
 
-  new_leaf(p, AST_BLOCK_INTRODUCER, lbrace);
-  push(p, (State){
+  push_state(p, (State){
     .kind = STATE_BLOCK_STMT,
     .as.block_stmt.lbrace = lbrace
   });
@@ -268,51 +247,50 @@ static bool do_BLOCK(Parser* p) {
 static bool do_BLOCK_STMT(Parser* p) {
   switch (peek(p).kind) {
     case '}':
-      new_node_bracketed(p, AST_BLOCK, lex(p), AST_BLOCK_INTRODUCER);
+      lex(p);
+      new_node(p, AST_BLOCK, p->state.as.block_stmt.lbrace, p->state.as.block_stmt.num_children);
       return true;
     case TOKEN_EOF:
       error_at_token(p->source, p->state.as.block_stmt.lbrace, "this brace has no closing brace");
       return false;
   }
 
-  push(p, (State) {
-    .kind = STATE_BLOCK_STMT,
-    .as.block_stmt.lbrace = p->state.as.block_stmt.lbrace,
-  });
+  p->state.as.block_stmt.num_children++;
+  push_state(p, p->state);
 
   switch (peek(p).kind) {
     default:
-      push(p, basic_state(STATE_SEMI));
-      push(p, basic_state(STATE_EXPR));
+      push_state(p, basic_state(STATE_SEMI));
+      push_state(p, basic_state(STATE_EXPR));
       break;
 
     case TOKEN_IDENTIFIER:
-      push(p, basic_state(STATE_SEMI));
+      push_state(p, basic_state(STATE_SEMI));
 
       if (peekn(p, 1).kind == ':') {
-        push(p, basic_state(STATE_LOCAL));
+        push_state(p, basic_state(STATE_LOCAL));
       }
       else {
-        push(p, basic_state(STATE_EXPR));
+        push_state(p, basic_state(STATE_EXPR));
       }
       break;
 
     case '{':
-      push(p, basic_state(STATE_BLOCK));
+      push_state(p, basic_state(STATE_BLOCK));
       break;
 
     case TOKEN_KEYWORD_RETURN:
-      push(p, complete(AST_RETURN, lex(p), 1));
-      push(p, basic_state(STATE_SEMI));
-      push(p, basic_state(STATE_EXPR));
+      push_state(p, complete(AST_RETURN, lex(p), 1));
+      push_state(p, basic_state(STATE_SEMI));
+      push_state(p, basic_state(STATE_EXPR));
       break;
 
     case TOKEN_KEYWORD_WHILE:
-      push(p, basic_state(STATE_WHILE));
+      push_state(p, basic_state(STATE_WHILE));
       break;
 
     case TOKEN_KEYWORD_IF:
-      push(p, basic_state(STATE_IF));
+      push_state(p, basic_state(STATE_IF));
       break;
 
     case TOKEN_KEYWORD_ELSE:
@@ -327,9 +305,9 @@ static bool do_WHILE(Parser* p) {
   Token while_tok = peek(p);
   REQUIRE(p, TOKEN_KEYWORD_WHILE, "expected a 'while' loop");
 
-  push(p, complete(AST_WHILE, while_tok, 2));
-  push(p, basic_state(STATE_BLOCK));
-  push(p, basic_state(STATE_EXPR));
+  push_state(p, complete(AST_WHILE, while_tok, 2));
+  push_state(p, basic_state(STATE_BLOCK));
+  push_state(p, basic_state(STATE_EXPR));
 
   return true;
 }
@@ -338,30 +316,36 @@ static bool do_IF(Parser* p) {
   Token if_tok = peek(p);
   REQUIRE(p, TOKEN_KEYWORD_IF, "expected a 'if' statement");
 
-  push(p, basic_state(STATE_ELSE));
-  push(p, basic_state(STATE_BLOCK));
-  push(p, complete(AST_IF, if_tok, 1));
-  push(p, basic_state(STATE_EXPR));
+  push_state(p, (State){
+    .kind = STATE_ELSE,
+    .as.els.if_token = if_tok
+  });
+
+  push_state(p, basic_state(STATE_BLOCK));
+  push_state(p, basic_state(STATE_EXPR));
 
   return true;
 }
 
 static bool do_ELSE(Parser* p) {
-
   if (peek(p).kind == TOKEN_KEYWORD_ELSE) {
-    new_leaf(p, AST_ELSE, lex(p));
+    lex(p);
+    push_state(p, complete(AST_IF, p->state.as.els.if_token, 3));
 
     switch (peek(p).kind) {
       default:
         error_at_token(p->source, peek(p), "only an if statement or a '{}' block can follow an else statement");
         return false;
       case '{':
-        push(p, basic_state(STATE_BLOCK));
+        push_state(p, basic_state(STATE_BLOCK));
         break;
       case TOKEN_KEYWORD_IF:
-        push(p, basic_state(STATE_IF));
+        push_state(p, basic_state(STATE_IF));
         break;
     }
+  }
+  else {
+    new_node(p, AST_IF, p->state.as.els.if_token, 2);
   }
 
   return true;
@@ -389,8 +373,8 @@ static bool do_LOCAL(Parser* p) {
 
   if (peek(p).kind == '=') {
     Token equal_tok = lex(p);
-    push(p, complete(AST_INITIALIZE, equal_tok, 2));
-    push(p, basic_state(STATE_EXPR));
+    push_state(p, complete(AST_INITIALIZE, equal_tok, 2));
+    push_state(p, basic_state(STATE_EXPR));
   }
 
   return true;
@@ -403,20 +387,23 @@ static bool do_FN(Parser* p) {
   Token name_tok = peek(p);
   REQUIRE(p, TOKEN_IDENTIFIER, "there must be a name after the 'fn' keyword");
 
-  new_leaf(p, AST_FN_INTRODUCER, fn_tok);
   new_leaf(p, AST_IDENTIFIER, name_tok);
+  push_state(p, complete(AST_FN, fn_tok, 2));
+  push_state(p, basic_state(STATE_BLOCK));
 
-  push(p, complete(AST_FN, fn_tok, 3));
-  push(p, basic_state(STATE_BLOCK));
   return true;
 }
 
 static bool do_TOP_LEVEL(Parser* p) {
   if (peek(p).kind == TOKEN_EOF) {
+    new_node(p, AST_FILE, peek(p), p->state.as.top_level.count);
     return true;
   }
 
-  push(p, basic_state(STATE_TOP_LEVEL));
+  push_state(p, (State){
+    .kind = STATE_TOP_LEVEL,
+    .as.top_level.count = p->state.as.top_level.count + 1,
+  });
 
   switch (peek(p).kind) {
     default:
@@ -424,31 +411,32 @@ static bool do_TOP_LEVEL(Parser* p) {
       return false;
 
     case TOKEN_KEYWORD_FN:
-      push(p, basic_state(STATE_FN));
+      push_state(p, basic_state(STATE_FN));
       return true;
   }
 }
 
-ASTBuffer* parse(Arena* arena, SourceContents source, TokenizedBuffer* tokens) {
+AST* parse(Arena* arena, SourceContents source, TokenizedBuffer* tokens) {
   Scratch scratch = global_scratch(1, &arena);
 
-  ASTBuffer* ast_buffer = NULL;
+  AST* result = NULL;
 
   Parser p = {
+    .node_arena = arena,
     .source = source,
     .token_buffer = tokens,
-    .nodes = new_dynamic_array(scratch.allocator),
-    .stack = new_dynamic_array(scratch.allocator)
+    .state_stack = new_dynamic_array(scratch.allocator),
+    .node_stack = new_dynamic_array(scratch.allocator),
   };
 
-  push(&p, basic_state(STATE_TOP_LEVEL));
+  push_state(&p, basic_state(STATE_TOP_LEVEL));
 
-  while (dynamic_array_length(p.stack)) {
-    p.state = dynamic_array_pop(p.stack);
+  while (dynamic_array_length(p.state_stack)) {
+    p.state = dynamic_array_pop(p.state_stack);
 
-    bool result = false;
+    bool state_result = false;
     
-    #define X(name, ...) case STATE_##name: result = do_##name(&p); break;
+    #define X(name, ...) case STATE_##name: state_result = do_##name(&p); break;
     switch (p.state.kind) {
       default:
         assert(false);
@@ -457,16 +445,14 @@ ASTBuffer* parse(Arena* arena, SourceContents source, TokenizedBuffer* tokens) {
     }
     #undef X
 
-    if (!result) {
+    if (!state_result) {
       goto end;
     }
   }
 
-  ast_buffer = arena_type(arena, ASTBuffer);
-  ast_buffer->count = dynamic_array_length(p.nodes);
-  ast_buffer->nodes = dynamic_array_bake(arena, p.nodes);
+  result = dynamic_array_pop(p.node_stack);
 
   end:
   scratch_release(&scratch);
-  return ast_buffer;
+  return result;
 }
