@@ -7,7 +7,6 @@ typedef struct {
   int depth;
   uint64_t* first_child;
   AST* node;
-  bool children_walked;
 } IndentedItem;
 
 static IndentedItem indented_item(Arena* arena, int depth, uint64_t* parent_first_child, bool is_first_child, AST* node) {
@@ -28,7 +27,7 @@ static IndentedItem indented_item(Arena* arena, int depth, uint64_t* parent_firs
 static void print_indentation(IndentedItem item) {
   for (int i = 1; i < item.depth+1; ++i) {
     if (bitset_query(item.first_child, i)) {
-      printf("%c", i == item.depth ? 218 : ' ');
+      printf("%c", i == item.depth ? 192 : ' ');
     }
     else {
       printf("%c", i == item.depth ? 195 : 179);
@@ -54,23 +53,17 @@ void ast_dump(AST* ast) {
     IndentedItem item = dynamic_array_pop(stack);
     AST* node = item.node;
 
-    if (!item.children_walked) {
-      item.children_walked = true;
-      dynamic_array_put(stack, item);
+    print_indentation(item);
+    printf("%s: '%.*s'\n", ast_kind_string[node->kind], node->token.length, node->token.start);
 
-      for_range_rev (int, i, node->num_children) {
-        dynamic_array_put(stack, indented_item(
-          scratch.arena,
-          item.depth + 1,
-          item.first_child,
-          i == 0,
-          node->children[i]
-        ));
-      }
-    }
-    else {
-      print_indentation(item);
-      printf("%s: '%.*s'\n", ast_kind_string[node->kind], node->token.length, node->token.start);
+    for_range_rev (int, i, node->num_children) {
+      dynamic_array_put(stack, indented_item(
+        scratch.arena,
+        item.depth + 1,
+        item.first_child,
+        i == node->num_children-1,
+        node->children[i]
+      ));
     }
   }
 
