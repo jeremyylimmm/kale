@@ -124,8 +124,8 @@ static void new_node(Parser* p, ASTKind kind, Token token, int num_children) {
 
   node->children = arena_array(p->node_arena, AST*, num_children);
 
-  for_range(int,i, num_children) {
-    node->children[num_children-1-i] = dynamic_array_pop(p->node_stack);
+  for_range_rev(int,i, num_children) {
+    node->children[i] = dynamic_array_pop(p->node_stack);
   }
 
   dynamic_array_put(p->node_stack, node); 

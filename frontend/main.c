@@ -19,15 +19,14 @@ int main() {
   TokenizedBuffer tokens = tokenize(arena, source);
 
   AST* ast = parse(arena, source, &tokens);
-  if (!ast) {
-    return 1;
-  }
-
+  if (!ast) { return 1; }
   ast_dump(ast);
 
-  //SemContext* sem = sem_init(arena);
-  //SemFile* sem_file = check_ast(sem, ast_buffer);
-  //sem_dump(sem_file);
+  SemContext* sem = sem_init(arena);
+
+  SemFile* sem_file = check_ast(sem, source, ast);
+  if (!sem_file) { return 1; }
+  sem_dump(sem_file);
 
   return 0;
 }

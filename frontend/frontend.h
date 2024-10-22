@@ -97,7 +97,8 @@ typedef struct {
 } SemFunc;
 
 typedef struct {
-  DynamicArray(SemFunc) funcs;
+  int num_funcs;
+  SemFunc* funcs;
 } SemFile;
 
 typedef struct {
@@ -115,5 +116,5 @@ AST* parse(Arena* arena, SourceContents source, TokenizedBuffer* tokens);
 void ast_dump(AST* ast);
 
 SemContext* sem_init(Arena* arena);
-//SemFile* check_ast(SemContext* context, ASTBuffer* ast_buffer);
+SemFile* check_ast(SemContext* context, SourceContents source, AST* ast);
 void sem_dump(SemFile* file);

@@ -10,7 +10,7 @@ SemContext* sem_init(Arena* arena) {
 }
 
 void sem_dump(SemFile* file) {
-  for_range(int, func_id, dynamic_array_length(file->funcs)) {
+  for_range(int, func_id, file->num_funcs) {
     SemFunc* func = &file->funcs[func_id];
     printf("fn @%s() {\n", func->name.str);
 
