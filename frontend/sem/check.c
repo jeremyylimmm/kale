@@ -5,8 +5,9 @@ typedef struct {
   AST* node;
 
   union {
-    struct { int head; int then; int then_tail; int els; } _if;
+    struct { int start_tail; int then_head; int then_tail; int else_head; } _if;
     struct { int og_stack_count; } block;
+    struct { int start_head, start_tail; int body_head; } _while;
   } data;
 } CheckItem;
 
@@ -207,20 +208,59 @@ static bool check_ast_RETURN(Checker* c, CheckItem item) {
 }
 
 static bool check_ast_WHILE(Checker* c, CheckItem item) {
-  INVALID();
+  switch (item.processed) {
+    case 0: {
+      int prev_tail = cur_block(c);
+      item.data._while.start_head = new_block(c);
+
+      int* loc = arena_type(c->context->arena, int);
+      loc[0] = item.data._while.start_head;
+
+      add_inst_in_block(c, prev_tail, SEM_OP_GOTO, item.node->token, false, 0, loc);
+
+      item.processed = 1;
+      push_item(c, item);
+      push_node(c, false, item.node->children[0]); // Predicate
+    } break;
+
+    case 1: {
+      item.data._while.start_tail = cur_block(c);
+      item.data._while.body_head = new_block(c); 
+      item.processed = 2;
+      push_item(c, item);
+      push_node(c, false, item.node->children[1]); // Body
+    } break;
+    
+    case 2: {
+      int body_tail = cur_block(c);
+
+      int* locs = arena_array(c->context->arena, int, 2);
+      locs[0] = item.data._while.body_head;
+      locs[1] = new_block(c);
+
+      add_inst_in_block(c, item.data._while.start_tail, SEM_OP_BRANCH, item.node->token, false, 1, locs);
+
+      locs = arena_type(c->context->arena, int);
+      locs[0] = item.data._while.start_head;
+
+      add_inst_in_block(c, body_tail, SEM_OP_GOTO, item.node->children[1]->token, false, 0, locs);
+    } break;
+  }
+
+  return true;
 }
 
 static bool check_ast_IF(Checker* c, CheckItem item) {
   switch (item.processed) {
     case 0: {
-      item.data._if.head = cur_block(c);
       item.processed = 1;
       push_item(c, item);
-      push_node(c, false, item.node->children[0]); // Expression
+      push_node(c, false, item.node->children[0]); // Predicate
     } break;
 
     case 1: {
-      item.data._if.then = new_block(c);
+      item.data._if.start_tail = cur_block(c);
+      item.data._if.then_head = new_block(c);
       item.processed = 2;
       push_item(c, item);
       push_node(c, false, item.node->children[1]); // Body
@@ -231,7 +271,7 @@ static bool check_ast_IF(Checker* c, CheckItem item) {
       item.processed = 3;
 
       if (item.node->num_children == 3) { // Has else 
-        item.data._if.els = new_block(c);
+        item.data._if.else_head = new_block(c);
         push_item(c, item);
 
         push_node(c, false, item.node->children[2]); // else
@@ -245,26 +285,24 @@ static bool check_ast_IF(Checker* c, CheckItem item) {
       bool has_else = item.node->num_children == 3;
 
       int* locs = arena_array(c->context->arena, int, 2);
-      locs[0] = item.data._if.then;
+      locs[0] = item.data._if.then_head;
 
       int else_tail = cur_block(c);
-      int end = new_block(c);
+      int end_head = new_block(c);
 
       if (has_else) {
-        locs[1] = item.data._if.els;
+        locs[1] = item.data._if.else_head;
       }
       else {
-        locs[1] = end;
+        locs[1] = end_head;
       }
 
-      int head = item.data._if.head;
-      add_inst_in_block(c, head, SEM_OP_BRANCH, item.node->token, false, 1, locs);
+      add_inst_in_block(c, item.data._if.start_tail, SEM_OP_BRANCH, item.node->token, false, 1, locs);
 
       locs = arena_type(c->context->arena, int);
-      locs[0] = end;
+      locs[0] = end_head;
 
-      int then_tail = item.data._if.then_tail;
-      add_inst_in_block(c, then_tail, SEM_OP_GOTO, item.node->children[1]->token, false, 0, locs);
+      add_inst_in_block(c, item.data._if.then_tail, SEM_OP_GOTO, item.node->children[1]->token, false, 0, locs);
 
       if (has_else) {
         add_inst_in_block(c, else_tail, SEM_OP_GOTO, item.node->children[2]->token, false, 0, locs);
