@@ -22,6 +22,8 @@ typedef struct {
   char* str;
 } String;
 
+#define BIT(x) (1 << (x))
+
 inline String copy_cstr(Arena* arena, char* str) {
   int length = (int)strlen(str);
 

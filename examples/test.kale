@@ -1,9 +1,11 @@
 fn foo {
-  x: int;
+  x: int = 3;
+  y: int;
+
+  x = y = 4;
 
   if 1 {
     if 2 {
-      y: int;
       x * 2;
       y * 2;
     }
@@ -12,15 +14,4 @@ fn foo {
   }
 
   return 32 * 1;
-}
-
-fn bar {
-  while 3 {
-    if 3 {
-    }
-  }
-
-  return 1;
-  return 2;
-  return 3;
 }

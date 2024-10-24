@@ -61,9 +61,8 @@ static void push_item(Checker* c, CheckItem item) {
   dynamic_array_put(c->item_stack, item);
 }
 
-static void push_node(Checker* c, int processed, AST* node) {
+static void push_node(Checker* c, AST* node) {
   CheckItem item = {
-    .processed = processed,
     .node = node
   };
 
@@ -252,11 +251,12 @@ static bool check_ast_LOCAL(Checker* c, CheckItem item) {
 
 static bool check_binary(Checker* c, CheckItem item, SemOp op, Token token) {
   if (!item.processed) {
-    push_node(c, true, item.node);
+    item.processed = 1;
+    push_item(c, item);
 
     assert(item.node->num_children == 2);
-    push_node(c, false, item.node->children[1]);
-    push_node(c, false, item.node->children[0]);
+    push_node(c, item.node->children[1]);
+    push_node(c, item.node->children[0]);
   }
   else {
     add_inst(c, op, token, true, 2, NULL);
@@ -282,11 +282,47 @@ static bool check_ast_DIV(Checker* c, CheckItem item) {
 }
 
 static bool check_ast_ASSIGN(Checker* c, CheckItem item) {
-  INVALID();
+  switch (item.processed) {
+    case 0: {
+      item.processed = 1;
+      push_item(c, item);
+      push_node(c, item.node->children[0]);
+    } break;
+
+    case 1: {
+      add_inst(c, SEM_OP_ADDRESS_OF, item.node->children[0]->token, true, 1, NULL);
+
+      item.processed = 2;
+      push_item(c, item);
+      push_node(c, item.node->children[1]);
+    } break;
+
+    case 2: {
+      // We want this node to produce a value, but it should be the rhs expression,
+      // not the store instruction
+      SemValue val = dynamic_array_back(c->value_stack);
+      add_inst(c, SEM_OP_STORE, item.node->token, false, 2, NULL);
+      dynamic_array_put(c->value_stack, val);
+    } break;
+  }
+
+  return true;
 }
 
 static bool check_ast_INITIALIZE(Checker* c, CheckItem item) {
-  INVALID();
+  if (!item.processed) {
+    item.processed = 1;
+    push_item(c, item);
+
+    assert(item.node->num_children == 2);
+    push_node(c, item.node->children[1]);
+    push_node(c, item.node->children[0]);
+  }
+  else {
+    add_inst(c, SEM_OP_STORE, item.node->token, false, 2, NULL);
+  }
+
+  return true;
 }
 
 static bool check_ast_BLOCK(Checker* c, CheckItem item) {
@@ -300,7 +336,7 @@ static bool check_ast_BLOCK(Checker* c, CheckItem item) {
       push_item(c, item);
 
       for_range_rev(int, i, item.node->num_children) {
-        push_node(c, false, item.node->children[i]);
+        push_node(c, item.node->children[i]);
       }
     } break;
 
@@ -318,10 +354,11 @@ static bool check_ast_BLOCK(Checker* c, CheckItem item) {
 
 static bool check_ast_RETURN(Checker* c, CheckItem item) {
   if (!item.processed) {
-    push_node(c, true, item.node);
+    item.processed = 1;
+    push_item(c, item);
 
     assert(item.node->num_children == 1);
-    push_node(c, false, item.node->children[0]);
+    push_node(c, item.node->children[0]);
   }
   else {
     add_inst(c, SEM_OP_RETURN, item.node->token, false, 1, NULL);
@@ -356,14 +393,14 @@ static bool check_ast_WHILE(Checker* c, CheckItem item) {
       item.data._while.start_head = start_head;
       item.processed = 1;
       push_item(c, item);
-      push_node(c, false, item.node->children[0]); // Predicate
+      push_node(c, item.node->children[0]); // Predicate
     } break;
 
     case 1: {
       new_block(c, &item.data._while.start_tail, &item.data._while.body_head);
       item.processed = 2;
       push_item(c, item);
-      push_node(c, false, item.node->children[1]); // Body
+      push_node(c, item.node->children[1]); // Body
     } break;
     
     case 2: {
@@ -382,14 +419,14 @@ static bool check_ast_IF(Checker* c, CheckItem item) {
     case 0: {
       item.processed = 1;
       push_item(c, item);
-      push_node(c, false, item.node->children[0]); // Predicate
+      push_node(c, item.node->children[0]); // Predicate
     } break;
 
     case 1: {
       new_block(c, &item.data._if.start_tail, &item.data._if.then_head);
       item.processed = 2;
       push_item(c, item);
-      push_node(c, false, item.node->children[1]); // Body
+      push_node(c, item.node->children[1]); // Body
     } break;
 
     case 2: {
@@ -397,7 +434,7 @@ static bool check_ast_IF(Checker* c, CheckItem item) {
         new_block(c, &item.data._if.then_tail, &item.data._if.else_head);
         item.processed = 3;
         push_item(c, item);
-        push_node(c, false, item.node->children[2]); // else
+        push_node(c, item.node->children[2]); // else
       }
       else {
         int then_tail, end_head;
@@ -455,7 +492,7 @@ static bool check_fn(SemContext* context, SourceContents source, AST* fn, SemFun
   assert(name->kind == AST_IDENTIFIER);
   func_out->name = token_string(context, name->token);
 
-  push_node(&c, false, body);
+  push_node(&c, body);
   _new_block(&c);
 
   bool had_error = false;

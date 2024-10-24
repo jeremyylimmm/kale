@@ -55,6 +55,7 @@ typedef struct AST AST;
 struct AST {
   ASTKind kind;
   Token token;
+
   int num_children;
   AST** children;
 };
