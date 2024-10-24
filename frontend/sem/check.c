@@ -95,17 +95,37 @@ static void new_block(Checker* c, int* cur, int* new) {
 static void block_append(Checker* c, int block, SemInst* inst) {
   SemBlock* b = &c->blocks[block];
 
-  if (!b->start) {
-    inst->pthis = &b->start;
-  }
-  else {
-    inst->pthis = &b->end->next;
-  }
+  inst->block = block;
 
+  inst->prev = b->end;
   inst->next = NULL;
 
-  *inst->pthis = inst;
+  if (inst->prev) {
+    inst->prev->next = inst;
+  }
+  else {
+    b->start = inst;
+  }
+
   b->end = inst;
+}
+
+static void inst_remove(Checker* c, SemInst* inst) {
+  SemBlock* b = &c->blocks[inst->block];
+
+  if (inst->prev) {
+    inst->prev->next = inst->next;
+  }
+  else {
+    b->start = inst->next;
+  }
+
+  if (inst->next) {
+    inst->next->prev = inst->prev;
+  }
+  else {
+    b->end = inst->prev;
+  }
 }
 
 static void add_inst_in_block(Checker* c, int block, SemOp op, Token token, bool has_def, int num_ins, void* data) {
@@ -321,7 +341,8 @@ static bool check_ast_ASSIGN(Checker* c, CheckItem item) {
         return false;
       }
 
-      push_value(c, dest->ins[0]);      
+      push_value(c, dest->ins[0]);
+      inst_remove(c, dest); // This is probably safe to do...
 
       item.processed = 2;
       push_item(c, item);

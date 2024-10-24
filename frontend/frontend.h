@@ -79,7 +79,8 @@ typedef struct SemInst SemInst;
 #define SEM_MAX_INS 4
 
 struct SemInst {
-  SemInst** pthis;
+  int block;
+  SemInst* prev;
   SemInst* next;
 
   SemOp op;
