@@ -18,9 +18,7 @@ void sem_dump(SemFile* file) {
       SemBlock* block = &func->blocks[block_id];
       printf("!bb_%d:\n", block_id);
 
-      for_range(int, inst_id, dynamic_array_length(block->insts)) {
-        SemInst* inst = &block->insts[inst_id];
-
+      for_list(SemInst, inst, block->start) {
         printf("  ");
 
         if (inst->def) {
@@ -34,7 +32,7 @@ void sem_dump(SemFile* file) {
             printf(", ");
           }
 
-          printf("%%%d", inst->ins[i]);
+          printf("%%%d", inst->ins[i]->def);
         }
 
         switch (inst->op) {

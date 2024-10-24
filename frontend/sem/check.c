@@ -13,7 +13,7 @@ typedef struct {
 
 typedef struct {
   String name;
-  SemValue val;
+  SemInst* val;
 } Symbol;
 
 typedef struct Scope Scope;
@@ -30,12 +30,12 @@ typedef struct {
   Allocator* scratch_allocator;
 
   DynamicArray(CheckItem) item_stack;
-  DynamicArray(SemValue) value_stack;
+  DynamicArray(SemInst*) value_stack;
   DynamicArray(Scope) scope_stack;
 
   DynamicArray(SemBlock) blocks;
   
-  SemValue next_value;
+  int next_value;
 } Checker;
 
 static String token_string_view(Token token) {
@@ -70,10 +70,7 @@ static void push_node(Checker* c, AST* node) {
 }
 
 static int _new_block(Checker* c) {
-  SemBlock block = {
-    .insts = new_dynamic_array(c->context->allocator)
-  };
-
+  SemBlock block = {0};
   dynamic_array_put(c->blocks, block);
   return dynamic_array_length(c->blocks)-1;
 }
@@ -83,27 +80,42 @@ static void new_block(Checker* c, int* cur, int* new) {
   *new = _new_block(c);
 }
 
+static void block_append(Checker* c, int block, SemInst* inst) {
+  SemBlock* b = &c->blocks[block];
+
+  if (!b->start) {
+    inst->pthis = &b->start;
+  }
+  else {
+    inst->pthis = &b->end->next;
+  }
+
+  inst->next = NULL;
+
+  *inst->pthis = inst;
+  b->end = inst;
+}
+
 static void add_inst_in_block(Checker* c, int block, SemOp op, Token token, bool has_def, int num_ins, void* data) {
   (void)token;
   assert(num_ins <= SEM_MAX_INS);
 
-  SemInst inst = {
-    .op = op,
-    .num_ins = num_ins,
-    .data = data
-  };
+  SemInst* inst = arena_type(c->context->arena, SemInst);
+  inst->op = op;
+  inst->num_ins = num_ins;
+  inst->data = data;
 
   for_range_rev(int, i, num_ins) {
-    inst.ins[i] = dynamic_array_pop(c->value_stack);
+    inst->ins[i] = dynamic_array_pop(c->value_stack);
   }
 
   if (has_def) {
-    inst.def = c->next_value++;
+    inst->def = c->next_value++;
 
-    dynamic_array_put(c->value_stack, inst.def);
+    dynamic_array_put(c->value_stack, inst);
   }
 
-  dynamic_array_put(c->blocks[block].insts, inst);
+  block_append(c, block, inst);
 }
 
 static void add_inst(Checker* c, SemOp op, Token token, bool has_def, int num_ins, void* data) {
@@ -148,7 +160,7 @@ static void _add_local(Scope* scope, Symbol symbol) {
   }
 }
 
-static void add_local(Checker* c, Scope* scope, String name, SemValue val) {
+static void add_local(Checker* c, Scope* scope, String name, SemInst* val) {
   if (!scope->capacity || (float)scope->count > (float)scope->capacity * 0.5f) {
     int new_capacity = scope->capacity ? scope->capacity * 2 : 8;
 
@@ -171,7 +183,7 @@ static void add_local(Checker* c, Scope* scope, String name, SemValue val) {
   _add_local(scope, (Symbol){.name = name, .val = val});
 }
 
-static SemValue find_local(Checker* c, String name) {
+static SemInst* find_local(Checker* c, String name) {
   for_range_rev(int, s, dynamic_array_length(c->scope_stack)) {
     Scope* scope = &c->scope_stack[s];
 
@@ -211,7 +223,7 @@ static bool check_ast_IDENTIFIER(Checker* c, CheckItem item) {
   Token name_tok = item.node->token;
   String name = token_string_view(name_tok);
 
-  SemValue val = find_local(c, name);
+  SemInst* val = find_local(c, name);
 
   if (!val) {
     error_at_token(c->source, name_tok, "this symbol does not exist in the current scope");
@@ -236,7 +248,7 @@ static bool check_ast_LOCAL(Checker* c, CheckItem item) {
   }
 
   add_inst(c, SEM_OP_LOCAL, item.node->token, true, 0, NULL);
-  SemValue val = dynamic_array_back(c->value_stack);
+  SemInst* val = dynamic_array_back(c->value_stack);
 
   String name = token_string_view(name_tok);
   if (find_local(c, name)) {
@@ -300,7 +312,7 @@ static bool check_ast_ASSIGN(Checker* c, CheckItem item) {
     case 2: {
       // We want this node to produce a value, but it should be the rhs expression,
       // not the store instruction
-      SemValue val = dynamic_array_back(c->value_stack);
+      SemInst* val = dynamic_array_back(c->value_stack);
       add_inst(c, SEM_OP_STORE, item.node->token, false, 2, NULL);
       dynamic_array_put(c->value_stack, val);
     } break;

@@ -13,6 +13,8 @@
 #define for_range(type, it, end) for (type it = 0; it < (end); ++it)
 #define for_range_rev(type, it, end) for (type it = (end)-1; it >= 0; --it)
 
+#define for_list(type, it, start) for (type* it = (start); it; it = it->next)
+
 inline void* offset_pointer(void* pointer, int64_t offset) {
   return (uint8_t*)pointer + offset;
 } 

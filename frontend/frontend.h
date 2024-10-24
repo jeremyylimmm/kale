@@ -74,22 +74,26 @@ static char* sem_op_str[] = {
 };
 #undef X
 
-typedef uint32_t SemValue;
+typedef struct SemInst SemInst;
 
 #define SEM_MAX_INS 4
 
-typedef struct {
+struct SemInst {
+  SemInst** pthis;
+  SemInst* next;
+
   SemOp op;
-  SemValue def;
+  int def;
 
   int num_ins;
-  SemValue ins[SEM_MAX_INS];
+  SemInst* ins[SEM_MAX_INS];
 
   void* data;
-} SemInst;
+};
 
 typedef struct {
-  DynamicArray(SemInst) insts;
+  SemInst* start;
+  SemInst* end;
 } SemBlock;
 
 typedef struct {
