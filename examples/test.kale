@@ -2,7 +2,7 @@ fn foo {
   x: int = 3;
   y: int;
 
-  x = 3 = 4;
+  x = y = 4;
 
   if 1 {
     if 2 {

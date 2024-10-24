@@ -69,6 +69,18 @@ static void push_node(Checker* c, AST* node) {
   push_item(c, item);
 }
 
+static SemInst* peek_value(Checker* c) {
+  return dynamic_array_back(c->value_stack);
+}
+
+static void push_value(Checker* c, SemInst* val) {
+  dynamic_array_put(c->value_stack, val);
+}
+
+static SemInst* pop_value(Checker* c) {
+  return dynamic_array_pop(c->value_stack);
+}
+
 static int _new_block(Checker* c) {
   SemBlock block = {0};
   dynamic_array_put(c->blocks, block);
@@ -302,7 +314,14 @@ static bool check_ast_ASSIGN(Checker* c, CheckItem item) {
     } break;
 
     case 1: {
-      add_inst(c, SEM_OP_ADDRESS_OF, item.node->children[0]->token, true, 1, NULL);
+      SemInst* dest = pop_value(c);
+
+      if (dest->op != SEM_OP_LOAD) {
+        error_at_token(c->source, item.node->children[0]->token, "this value is not assignable");
+        return false;
+      }
+
+      push_value(c, dest->ins[0]);      
 
       item.processed = 2;
       push_item(c, item);

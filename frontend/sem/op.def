@@ -7,7 +7,6 @@ X(DIV, "div")
 
 X(LOCAL, "local")
 X(LOAD, "load")
-X(ADDRESS_OF, "addr")
 X(STORE, "store")
 
 X(GOTO, "goto")
