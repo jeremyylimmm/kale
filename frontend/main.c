@@ -26,6 +26,11 @@ int main() {
 
   SemFile* sem_file = check_ast(sem, source, ast);
   if (!sem_file) { return 1; }
+
+  if (!sem_analyze(sem, source, sem_file)) {
+    return 1;
+  }
+
   sem_dump(sem_file);
 
   return 0;

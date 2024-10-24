@@ -85,6 +85,7 @@ struct SemInst {
 
   SemOp op;
   int def;
+  Token token;
 
   int num_ins;
   SemInst* ins[SEM_MAX_INS];
@@ -123,4 +124,6 @@ void ast_dump(AST* ast);
 
 SemContext* sem_init(Arena* arena);
 SemFile* check_ast(SemContext* context, SourceContents source, AST* ast);
+uint64_t* sem_reachable(Arena* arena, SemFunc* func);
+bool sem_analyze(SemContext* context, SourceContents source, SemFile* file);
 void sem_dump(SemFile* file);

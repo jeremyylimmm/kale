@@ -15,3 +15,14 @@ fn foo {
 
   return 32 * 1;
 }
+
+fn dingle {
+  if 1 {
+    return 1;
+  }
+  else {
+    return 2;
+  }
+
+  return 3;
+}

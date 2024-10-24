@@ -129,11 +129,11 @@ static void inst_remove(Checker* c, SemInst* inst) {
 }
 
 static void add_inst_in_block(Checker* c, int block, SemOp op, Token token, bool has_def, int num_ins, void* data) {
-  (void)token;
   assert(num_ins <= SEM_MAX_INS);
 
   SemInst* inst = arena_type(c->context->arena, SemInst);
   inst->op = op;
+  inst->token = token;
   inst->num_ins = num_ins;
   inst->data = data;
 
