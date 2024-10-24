@@ -12,11 +12,6 @@ typedef struct {
 } CheckItem;
 
 typedef struct {
-  SemValue val;
-  Token token;
-} Value;
-
-typedef struct {
   String name;
   SemValue val;
 } Symbol;
@@ -35,7 +30,7 @@ typedef struct {
   Allocator* scratch_allocator;
 
   DynamicArray(CheckItem) item_stack;
-  DynamicArray(Value) value_stack;
+  DynamicArray(SemValue) value_stack;
   DynamicArray(Scope) scope_stack;
 
   DynamicArray(SemBlock) blocks;
@@ -90,6 +85,7 @@ static void new_block(Checker* c, int* cur, int* new) {
 }
 
 static void add_inst_in_block(Checker* c, int block, SemOp op, Token token, bool has_def, int num_ins, void* data) {
+  (void)token;
   assert(num_ins <= SEM_MAX_INS);
 
   SemInst inst = {
@@ -99,18 +95,13 @@ static void add_inst_in_block(Checker* c, int block, SemOp op, Token token, bool
   };
 
   for_range_rev(int, i, num_ins) {
-    inst.ins[i] = dynamic_array_pop(c->value_stack).val;
+    inst.ins[i] = dynamic_array_pop(c->value_stack);
   }
 
   if (has_def) {
     inst.def = c->next_value++;
 
-    Value val = {
-      .val = inst.def,
-      .token = token
-    };
-
-    dynamic_array_put(c->value_stack, val);
+    dynamic_array_put(c->value_stack, inst.def);
   }
 
   dynamic_array_put(c->blocks[block].insts, inst);
@@ -218,7 +209,20 @@ static bool check_ast_INT_LITERAL(Checker* c, CheckItem item) {
   } while (false)
 
 static bool check_ast_IDENTIFIER(Checker* c, CheckItem item) {
-  INVALID();
+  Token name_tok = item.node->token;
+  String name = token_string_view(name_tok);
+
+  SemValue val = find_local(c, name);
+
+  if (!val) {
+    error_at_token(c->source, name_tok, "this symbol does not exist in the current scope");
+    return false;
+  }
+
+  dynamic_array_put(c->value_stack, val);
+  add_inst(c, SEM_OP_LOAD, name_tok, true, 1, NULL);
+
+  return true;
 }
 
 static bool check_ast_LOCAL(Checker* c, CheckItem item) {
@@ -233,7 +237,7 @@ static bool check_ast_LOCAL(Checker* c, CheckItem item) {
   }
 
   add_inst(c, SEM_OP_LOCAL, item.node->token, true, 0, NULL);
-  SemValue val = dynamic_array_back(c->value_stack).val;
+  SemValue val = dynamic_array_back(c->value_stack);
 
   String name = token_string_view(name_tok);
   if (find_local(c, name)) {

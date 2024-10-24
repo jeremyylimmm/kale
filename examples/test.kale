@@ -1,10 +1,11 @@
 fn foo {
   x: int;
-  y: int;
 
   if 1 {
     if 2 {
+      y: int;
       x * 2;
+      y * 2;
     }
   }
   else if 3 {
