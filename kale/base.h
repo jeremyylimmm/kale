@@ -35,6 +35,14 @@ inline String copy_cstr(Arena* arena, char* str) {
   };
 }
 
+inline bool strings_ident(String a, String b) {
+  if (a.length != b.length) {
+    return false;
+  }
+
+  return memcmp(a.str, b.str, a.length * sizeof(a.str[0])) == 0;
+}
+
 inline size_t bitset_num_u64(size_t num_bits) {
   return (num_bits + 63) / 64;
 }
@@ -49,4 +57,16 @@ inline void bitset_set(uint64_t* set, size_t index) {
 
 inline void bitset_unset(uint64_t* set, size_t index) {
   set[index/64] &= ~((uint64_t)1 << (index % 64));
+}
+
+inline uint64_t fnv1a_hash(void* data, size_t n) {
+  uint64_t hash = 0xcbf29ce484222325;
+
+  for_range(size_t, i, n) {
+    uint8_t byte = ((uint8_t*)data)[i];
+    hash ^= (uint64_t)(byte);
+    hash *= 0x100000001b3;
+  }
+
+  return hash;
 }

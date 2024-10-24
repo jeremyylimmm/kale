@@ -17,15 +17,38 @@ typedef struct {
 } Value;
 
 typedef struct {
+  String name;
+  SemValue val;
+} Symbol;
+
+typedef struct Scope Scope;
+struct Scope {
+  int capacity;
+  int count;
+  uint64_t* occ;
+  Symbol* table;
+};
+
+typedef struct {
   SemContext* context;
   SourceContents source;
+  Allocator* scratch_allocator;
 
   DynamicArray(CheckItem) item_stack;
   DynamicArray(Value) value_stack;
+  DynamicArray(Scope) scope_stack;
+
   DynamicArray(SemBlock) blocks;
   
   SemValue next_value;
 } Checker;
+
+static String token_string_view(Token token) {
+  return (String) {
+    .str = token.start,
+    .length = token.length
+  };
+}
 
 static String token_string(SemContext* context, Token token) {
   char* buf = arena_push(context->arena, (token.length+1) * sizeof(char));
@@ -98,6 +121,82 @@ static void add_inst(Checker* c, SemOp op, Token token, bool has_def, int num_in
   add_inst_in_block(c, cur_block, op, token, has_def, num_ins, data);
 }
 
+static int scope_find(Scope* scope, String key) {
+  assert(scope->capacity);
+
+  uint64_t hash = fnv1a_hash(key.str, key.length * sizeof(key.str[0]));
+  int i =  hash % scope->capacity;
+
+  for_range(int, j, scope->capacity) {
+    if (!bitset_query(scope->occ, i)) {
+      return i;
+    }
+
+    if (strings_ident(scope->table[i].name, key)) {
+      return i;
+    }
+
+    i = (i + 1) % scope->capacity;
+  }
+
+  assert(false); // This should be unreachable - load factor should be maintained at certain level
+  return -1;
+}
+
+static void free_scope(Checker* c, Scope scope) {
+  allocator_free(c->scratch_allocator, scope.table);
+  allocator_free(c->scratch_allocator, scope.occ);
+}
+
+static void _add_local(Scope* scope, Symbol symbol) {
+  int i = scope_find(scope, symbol.name);
+
+  if (!bitset_query(scope->occ, i)) {
+    scope->table[i] = symbol;
+    bitset_set(scope->occ, i);
+    scope->count++;
+  }
+}
+
+static void add_local(Checker* c, Scope* scope, String name, SemValue val) {
+  if (!scope->capacity || (float)scope->count > (float)scope->capacity * 0.5f) {
+    int new_capacity = scope->capacity ? scope->capacity * 2 : 8;
+
+    Scope new_scope = {
+      .capacity = new_capacity,
+      .occ = allocator_alloc(c->scratch_allocator, bitset_num_u64(new_capacity) * sizeof(uint64_t)),
+      .table = allocator_alloc(c->scratch_allocator, new_capacity * sizeof(scope->table[0]))
+    };
+
+    for_range(int, i, scope->capacity) {
+      if (bitset_query(scope->occ, i)) {
+        _add_local(&new_scope, scope->table[i]);
+      }
+    }
+
+    free_scope(c, *scope);
+    *scope = new_scope;
+  }
+
+  _add_local(scope, (Symbol){.name = name, .val = val});
+}
+
+static SemValue find_local(Checker* c, String name) {
+  for_range_rev(int, s, dynamic_array_length(c->scope_stack)) {
+    Scope* scope = &c->scope_stack[s];
+
+    if (scope->capacity) {
+      int i = scope_find(scope, name);
+
+      if (bitset_query(scope->occ, i)) {
+        return scope->table[i].val;
+      }
+    }
+  }
+
+  return 0;
+}
+
 static bool check_ast_INT_LITERAL(Checker* c, CheckItem item) {
   uint64_t value = 0;
   Token token = item.node->token;
@@ -123,7 +222,28 @@ static bool check_ast_IDENTIFIER(Checker* c, CheckItem item) {
 }
 
 static bool check_ast_LOCAL(Checker* c, CheckItem item) {
-  INVALID();
+  assert(item.node->num_children == 2);
+
+  Token name_tok = item.node->children[0]->token;
+  Token ty_tok = item.node->children[1]->token;
+
+  if (strncmp("int", ty_tok.start, 3) != 0) {
+    error_at_token(c->source, ty_tok, "only 'int' type supported");
+    return false;
+  }
+
+  add_inst(c, SEM_OP_LOCAL, item.node->token, true, 0, NULL);
+  SemValue val = dynamic_array_back(c->value_stack).val;
+
+  String name = token_string_view(name_tok);
+  if (find_local(c, name)) {
+    error_at_token(c->source, name_tok, "this symbol name overwrites an existing symbol");
+    return false;
+  }
+
+  add_local(c, &dynamic_array_back(c->scope_stack), name, val);
+
+  return true;
 }
 
 static bool check_binary(Checker* c, CheckItem item, SemOp op, Token token) {
@@ -168,6 +288,9 @@ static bool check_ast_INITIALIZE(Checker* c, CheckItem item) {
 static bool check_ast_BLOCK(Checker* c, CheckItem item) {
   switch (item.processed) {
     case 0: {
+      Scope new_scope = {0};
+      dynamic_array_put(c->scope_stack, new_scope);
+
       item.processed += 1;
       item.data.block.og_stack_count = dynamic_array_length(c->value_stack);
       push_item(c, item);
@@ -181,6 +304,8 @@ static bool check_ast_BLOCK(Checker* c, CheckItem item) {
       while (dynamic_array_length(c->value_stack) > item.data.block.og_stack_count) {
         dynamic_array_pop(c->value_stack);
       }
+
+      free_scope(c, dynamic_array_pop(c->scope_stack));
     } break;
   }
 
@@ -307,9 +432,15 @@ static bool check_fn(SemContext* context, SourceContents source, AST* fn, SemFun
   Checker c = {
     .context = context,
     .source = source,
+
+    .scratch_allocator = scratch.allocator,
+
     .item_stack = new_dynamic_array(scratch.allocator),
     .value_stack = new_dynamic_array(scratch.allocator),
+    .scope_stack = new_dynamic_array(scratch.allocator),
+
     .blocks = new_dynamic_array(context->allocator),
+
     .next_value = 1
   };
 

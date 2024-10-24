@@ -57,6 +57,11 @@ int _dynamic_array_pop(void* da) {
   return --(header(da)->length);
 }
 
+int _dynamic_array_back(void* da) {
+  assert(dynamic_array_length(da));
+  return (header(da)->length) - 1;
+}
+
 void dynamic_array_clear(void* da) {
   header(da)->length = 0;
 }
